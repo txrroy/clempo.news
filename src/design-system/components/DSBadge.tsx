@@ -8,6 +8,7 @@ export type DSTone = keyof DSColors['tones'];
 export interface DSBadgeProps {
   label: string;
   tone?: DSTone;
+  /** @deprecated Dots removed from design system; prop ignored for backward compatibility. */
   dot?: boolean;
   bordered?: boolean;
   style?: ViewStyle;
@@ -16,7 +17,6 @@ export interface DSBadgeProps {
 export function DSBadge({
   label,
   tone = 'neutral',
-  dot = false,
   bordered = false,
   style,
 }: DSBadgeProps) {
@@ -29,10 +29,9 @@ export function DSBadge({
         {
           flexDirection: 'row',
           alignItems: 'center',
-          gap: theme.spacing.xs + 1,
-          paddingHorizontal: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.sm + 2,
           paddingVertical: theme.spacing.xxs + 1,
-          borderRadius: theme.radii.xs,
+          borderRadius: theme.radii.pill,
           backgroundColor: t.bg,
           borderWidth: bordered ? theme.layout.borderWidth : 0,
           borderColor: bordered ? t.border : 'transparent',
@@ -40,16 +39,6 @@ export function DSBadge({
         style,
       ]}
     >
-      {dot ? (
-        <View
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: theme.radii.pill,
-            backgroundColor: t.dot,
-          }}
-        />
-      ) : null}
       <DSText
         variant="micro"
         weight="semibold"
@@ -81,11 +70,11 @@ export function DSChip({ label, active = false, onPress }: DSChipProps) {
           borderRadius: theme.radii.pill,
           backgroundColor: active
             ? theme.colors.textPrimary
-            : theme.colors.surfaceMuted,
+            : theme.colors.surface,
           borderWidth: theme.layout.borderWidth,
           borderColor: active
             ? theme.colors.textPrimary
-            : theme.colors.borderSubtle,
+            : theme.colors.borderDefault,
           opacity: pressed ? 0.78 : 1,
         },
       ]}

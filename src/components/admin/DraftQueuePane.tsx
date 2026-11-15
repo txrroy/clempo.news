@@ -1,4 +1,14 @@
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import {
+  DSBadge,
+  DSCard,
+  DSTable,
+  DSTableHeader,
+  DSTableRow,
+  DSText,
+  useDSTheme,
+  type DSTone,
+} from '@/design-system';
 import type { Article } from '@/types/article';
 
 interface DraftQueuePaneProps {
@@ -30,10 +40,10 @@ function groupByAccuracy(drafts: Article[]): AccuracyGroup[] {
   ].filter((group) => group.items.length > 0);
 }
 
-function getScoreBadgeClasses(score: number): string {
-  if (score >= 85) return 'bg-emerald-100 text-emerald-800';
-  if (score >= 65) return 'bg-amber-100 text-amber-800';
-  return 'bg-red-100 text-red-800';
+function getScoreTone(score: number): DSTone {
+  if (score >= 85) return 'success';
+  if (score >= 65) return 'warning';
+  return 'danger';
 }
 
 export function DraftQueuePane({
@@ -41,122 +51,116 @@ export function DraftQueuePane({
   selectedId,
   onSelect,
 }: DraftQueuePaneProps) {
+  const { theme } = useDSTheme();
   const groups = groupByAccuracy(drafts);
 
   return (
-    <View className="w-full md:w-96 border-b md:border-b-0 md:border-r border-stone-200 bg-white">
-      <View className="px-5 py-4 border-b border-stone-200 flex-row items-center justify-between">
-        <Text className="text-lg font-bold text-ink">Draft Queue</Text>
-        <View className="bg-stone-100 px-2.5 py-1 rounded-full">
-          <Text className="text-xs font-semibold text-ink/80">
-            {drafts.length} pending
-          </Text>
-        </View>
-      </View>
-
-      <ScrollView className="flex-1 max-h-72 md:max-h-none">
+    <DSCard
+      headerTitle="Draft Queue"
+      headerRight={<DSBadge label={`${drafts.length} pending`} tone="neutral" />}
+      padding="md"
+      className="w-full md:w-96"
+      style={{ alignSelf: 'stretch' }}
+    >
+      <ScrollView className="max-h-72 md:max-h-none md:flex-1">
         {groups.length === 0 ? (
-          <View className="p-6 items-center">
-            <Text className="text-base text-ink/60 text-center">
+          <View style={{ padding: theme.spacing.xxl, alignItems: 'center' }}>
+            <DSText variant="body" tone="secondary" center>
               No pending drafts in the queue.
-            </Text>
+            </DSText>
           </View>
         ) : (
-          groups.map((group) => (
-            <View key={group.label} className="pt-4">
-              <Text className="px-5 pb-2 text-xs font-bold uppercase tracking-wider text-ink/50">
-                {group.label}
-              </Text>
-              {group.items.map((item) => {
-                const isSelected = item.id === selectedId;
-                const accuracy = getAccuracy(item);
-                const scores = item.scores;
-                const flags = item.flags ?? [];
+          <View style={{ gap: theme.spacing.lg }}>
+            {groups.map((group) => (
+              <DSTable key={group.label}>
+                <DSTableHeader>
+                  <DSText variant="micro" weight="semibold" tone="tertiary">
+                    {group.label}
+                  </DSText>
+                </DSTableHeader>
+                {group.items.map((item, idx) => {
+                  const isSelected = item.id === selectedId;
+                  const accuracy = getAccuracy(item);
+                  const scores = item.scores;
+                  const flags = item.flags ?? [];
 
-                return (
-                  <Pressable
-                    key={item.id}
-                    onPress={() => onSelect(item.id)}
-                    className={`px-5 py-3.5 border-b border-stone-100 ${
-                      isSelected ? 'bg-teal-50 border-l-4 border-l-accent' : 'bg-white'
-                    }`}
-                  >
-                    <View className="flex-row items-center justify-between mb-1.5">
-                      <Text className="text-xs text-ink/50 font-medium">
-                        {item.date}
-                        {item.source_count ? ` • ${item.source_count} outlets` : ''}
-                      </Text>
-                      <View className="flex-row items-center gap-1.5">
-                        {item.judge_pass !== undefined ? (
-                          <View
-                            className={`px-2 py-0.5 rounded-full ${
-                              item.judge_pass
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            <Text className="text-[11px] font-bold">
-                              {item.judge_pass ? 'PASS' : 'REVIEW'}
-                            </Text>
-                          </View>
-                        ) : null}
+                  return (
+                    <DSTableRow
+                      key={item.id}
+                      selected={isSelected}
+                      isLast={idx === group.items.length - 1}
+                      onPress={() => onSelect(item.id)}
+                      style={{ flexDirection: 'column', alignItems: 'stretch', gap: theme.spacing.xs }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: theme.spacing.sm,
+                        }}
+                      >
+                        <DSText variant="caption" tone="tertiary" tabularNums>
+                          {item.date}
+                          {item.source_count ? ` · ${item.source_count} outlets` : ''}
+                        </DSText>
                         <View
-                          className={`px-2 py-0.5 rounded-full ${getScoreBadgeClasses(
-                            accuracy
-                          )}`}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: theme.spacing.xs,
+                          }}
                         >
-                          <Text className="text-xs font-bold">
-                            Acc: {accuracy}
-                          </Text>
+                          {item.judge_pass !== undefined ? (
+                            <DSBadge
+                              label={item.judge_pass ? 'Pass' : 'Review'}
+                              tone={item.judge_pass ? 'success' : 'warning'}
+                            />
+                          ) : null}
+                          <DSBadge label={`Acc ${accuracy}`} tone={getScoreTone(accuracy)} />
                         </View>
                       </View>
-                    </View>
 
-                    <Text
-                      numberOfLines={2}
-                      className="text-base font-semibold text-ink leading-snug mb-2"
-                    >
-                      {item.ai_headline}
-                    </Text>
+                      <DSText variant="body" weight="semibold" tone="primary" numberOfLines={2}>
+                        {item.ai_headline}
+                      </DSText>
 
-                    {scores ? (
-                      <View className="flex-row flex-wrap gap-1.5 mb-1.5">
-                        <Text className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-stone-100 text-ink/70">
-                          Acc {scores.accuracy}
-                        </Text>
-                        <Text className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-stone-100 text-ink/70">
-                          Neu {scores.neutrality}
-                        </Text>
-                        <Text className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-stone-100 text-ink/70">
-                          Saf {scores.safety}
-                        </Text>
-                        <Text className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-stone-100 text-ink/70">
-                          Read {scores.readability}
-                        </Text>
-                      </View>
-                    ) : null}
+                      {scores ? (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: theme.spacing.xs,
+                          }}
+                        >
+                          <DSBadge label={`Acc ${scores.accuracy}`} tone="neutral" />
+                          <DSBadge label={`Neu ${scores.neutrality}`} tone="neutral" />
+                          <DSBadge label={`Saf ${scores.safety}`} tone="neutral" />
+                          <DSBadge label={`Read ${scores.readability}`} tone="neutral" />
+                        </View>
+                      ) : null}
 
-                    {flags.length > 0 ? (
-                      <View className="flex-row flex-wrap gap-1">
-                        {flags.map((flag) => (
-                          <View
-                            key={flag}
-                            className="bg-rose-100 px-1.5 py-0.5 rounded"
-                          >
-                            <Text className="text-[10px] font-bold text-rose-800">
-                              {flag}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))
+                      {flags.length > 0 ? (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: theme.spacing.xs,
+                          }}
+                        >
+                          {flags.map((flag) => (
+                            <DSBadge key={flag} label={flag} tone="danger" />
+                          ))}
+                        </View>
+                      ) : null}
+                    </DSTableRow>
+                  );
+                })}
+              </DSTable>
+            ))}
+          </View>
         )}
       </ScrollView>
-    </View>
+    </DSCard>
   );
 }

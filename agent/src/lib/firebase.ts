@@ -2,7 +2,11 @@ import { initializeApp, cert, getApps, type ServiceAccount } from 'firebase-admi
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { RSS_SOURCES, type RssSource } from '../config';
 import { DEFAULT_ACTIVE_POLICY, DEFAULT_POLICY_SETTINGS } from '../policy';
-import type { ActivePolicyDoc, ArticleDocument } from '../types';
+import type {
+  ActivePolicyDoc,
+  ArticleDocument,
+  PipelineRunLog,
+} from '../types';
 
 export function initFirebaseAdmin(): Firestore {
   if (getApps().length > 0) {
@@ -50,6 +54,57 @@ export async function getExistingArticleUrls(
     }
   }
   return urls;
+}
+
+export interface ExistingDedupeContext {
+  urls: Set<string>;
+  recentHeadlines: string[];
+}
+
+export async function getExistingDedupeContext(
+  db: Firestore,
+  recentDays = 7
+): Promise<ExistingDedupeContext> {
+  const snapshot = await db
+    .collection('articles')
+    .select('original_url', 'alternate_urls', 'ai_headline', 'date')
+    .get();
+
+  const cutoffDate = new Date(Date.now() - recentDays * 86_400_000)
+    .toISOString()
+    .split('T')[0];
+
+  const urls = new Set<string>();
+  const recentHeadlines: string[] = [];
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as {
+      original_url?: unknown;
+      alternate_urls?: unknown;
+      ai_headline?: unknown;
+      date?: unknown;
+    };
+    if (typeof data.original_url === 'string' && data.original_url) {
+      urls.add(data.original_url);
+    }
+    if (Array.isArray(data.alternate_urls)) {
+      for (const alt of data.alternate_urls) {
+        if (typeof alt === 'string' && alt) {
+          urls.add(alt);
+        }
+      }
+    }
+    if (
+      typeof data.ai_headline === 'string' &&
+      data.ai_headline &&
+      typeof data.date === 'string' &&
+      data.date >= cutoffDate
+    ) {
+      recentHeadlines.push(data.ai_headline);
+    }
+  }
+
+  return { urls, recentHeadlines };
 }
 
 export async function getAllExistingArticleUrls(db: Firestore): Promise<Set<string>> {
@@ -137,6 +192,17 @@ export async function loadRssSources(db: Firestore): Promise<RssSource[]> {
   } catch (err) {
     console.warn('Failed to load config/sources, using defaults:', err);
     return RSS_SOURCES;
+  }
+}
+
+export async function savePipelineRunLog(
+  db: Firestore,
+  runLog: PipelineRunLog
+): Promise<void> {
+  try {
+    await db.collection('config').doc('latest_pipeline_run').set(runLog);
+  } catch (err) {
+    console.warn('Failed to save config/latest_pipeline_run:', err);
   }
 }
 

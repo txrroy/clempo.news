@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Pressable, ScrollView } from 'react-native';
 import {
   useDSTheme,
@@ -75,7 +75,27 @@ export function LivePipelineDrawer({
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
+  useEffect(() => {
+    if (!visible) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
+
   if (!visible) return null;
+
+  const handleClose = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    onClose();
+  };
 
   const resetState = () => {
     setErrorMsg(null);
@@ -120,6 +140,10 @@ export function LivePipelineDrawer({
         throw new Error(text || `Pipeline stream failed (${response.status})`);
       }
 
+      if (typeof response.body.getReader !== 'function') {
+        throw new Error('Streaming response body is not supported in this runtime.');
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -137,7 +161,12 @@ export function LivePipelineDrawer({
             .split('\n')
             .find((l) => l.startsWith('data: '));
           if (!dataLine) continue;
-          const evt = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+          let evt: Record<string, unknown>;
+          try {
+            evt = JSON.parse(dataLine.slice(6)) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
 
           if (evt.type === 'agent1_start' || evt.type === 'agent1_progress') {
             setAgent1({
@@ -247,7 +276,7 @@ export function LivePipelineDrawer({
       }}
     >
       <Pressable
-        onPress={onClose}
+        onPress={handleClose}
         style={{ flex: 1, backgroundColor: theme.colors.backdrop }}
       />
 
@@ -256,33 +285,30 @@ export function LivePipelineDrawer({
           theme.shadows.popover,
           {
             backgroundColor: theme.colors.canvas,
-            borderLeftWidth: theme.layout.borderWidth,
-            borderLeftColor: theme.colors.borderDefault,
             height: '100%',
-            maxWidth: theme.layout.drawerMaxWidth,
+            width: '100%',
             flexDirection: 'column',
           },
         ]}
-        className="w-full md:w-[70%] lg:w-[58%]"
       >
         {/* Toolbar */}
         <View
           style={{
-            backgroundColor: theme.colors.surface,
+            backgroundColor: theme.colors.canvas,
             borderBottomWidth: theme.layout.borderWidth,
-            borderBottomColor: theme.colors.borderSubtle,
-            paddingHorizontal: theme.spacing.xl,
+            borderBottomColor: theme.colors.borderDefault,
+            paddingHorizontal: theme.spacing.xxl,
             paddingVertical: theme.spacing.md,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <View>
-            <DSText variant="headline" weight="bold" tone="primary">
+          <View style={{ flex: 1, minWidth: 0, paddingRight: theme.spacing.md }}>
+            <DSText variant="headline" weight="semibold" tone="primary">
               Watch Agents Work
             </DSText>
-            <DSText variant="caption" tone="secondary">
+            <DSText variant="caption" tone="tertiary">
               Live 3-Agent SSE Pipeline · Fetcher → Summarizer → Judge
             </DSText>
           </View>
@@ -290,18 +316,16 @@ export function LivePipelineDrawer({
             label="Close"
             variant="secondary"
             size="sm"
-            pill
-            onPress={() => {
-              abortRef.current?.abort();
-              onClose();
-            }}
+            onPress={handleClose}
           />
         </View>
 
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            padding: theme.spacing.xl,
+            paddingHorizontal: theme.spacing.xxl,
+            paddingVertical: theme.spacing.xl,
+            paddingBottom: theme.spacing.xxxl,
             gap: theme.spacing.lg,
           }}
         >
@@ -328,9 +352,8 @@ export function LivePipelineDrawer({
 
                 <DSButton
                   label={running ? 'Running Pipeline...' : 'Run Live Pipeline'}
-                  variant="accent"
+                  variant="primary"
                   size="md"
-                  pill
                   loading={running}
                   disabled={running}
                   onPress={handleRun}
@@ -367,7 +390,7 @@ export function LivePipelineDrawer({
           {/* Stage 1: Fetcher */}
           <DSCard
             headerTitle="Agent 1 · RSS Fetcher & Clustering"
-            headerRight={<DSBadge {...getStageBadge(agent1.status)} dot />}
+            headerRight={<DSBadge {...getStageBadge(agent1.status)} />}
             padding="lg"
           >
             <DSText variant="body" tone="secondary">
@@ -378,7 +401,7 @@ export function LivePipelineDrawer({
           {/* Stage 2: Summarizer */}
           <DSCard
             headerTitle="Agent 2 · Grade-6 Summarizer"
-            headerRight={<DSBadge {...getStageBadge(agent2.status)} dot />}
+            headerRight={<DSBadge {...getStageBadge(agent2.status)} />}
             padding="lg"
           >
             <DSText variant="body" tone="secondary">
@@ -420,8 +443,8 @@ export function LivePipelineDrawer({
                 gap: theme.spacing.xs,
               }}
             >
-              <DSText variant="caption" weight="bold" tone="warning" uppercase>
-                ↻ Autonomous Self-Correction Loop Triggered
+              <DSText variant="caption" weight="semibold" tone="warning">
+                ↻ Autonomous self-correction loop triggered
               </DSText>
               <DSText variant="footnote" tone="primary">
                 Agent 3 rejected the initial draft and sent critique back to
@@ -433,7 +456,7 @@ export function LivePipelineDrawer({
           {/* Stage 3: Judge */}
           <DSCard
             headerTitle="Agent 3 · Quality Judge & Claim Grounding"
-            headerRight={<DSBadge {...getStageBadge(agent3.status)} dot />}
+            headerRight={<DSBadge {...getStageBadge(agent3.status)} />}
             padding="lg"
           >
             <DSText variant="body" tone="secondary">
@@ -442,8 +465,8 @@ export function LivePipelineDrawer({
 
             {claims.length > 0 ? (
               <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
-                <DSText variant="micro" weight="bold" tone="tertiary" uppercase>
-                  Claim-by-Claim Verification
+                <DSText variant="micro" weight="semibold" tone="tertiary">
+                  Claim-by-claim verification
                 </DSText>
                 {claims.map((c, idx) => (
                   <DSSurface
@@ -520,7 +543,6 @@ export function LivePipelineDrawer({
                 label="Open Saved Draft in Reader →"
                 variant="primary"
                 size="md"
-                pill
                 onPress={() => {
                   onClose();
                   onOpenArticle(savedIds[0]);

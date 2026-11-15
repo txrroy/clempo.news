@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Linking, ScrollView, View } from 'react-native';
 import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  Linking,
-  ActivityIndicator,
-} from 'react-native';
+  DSBadge,
+  DSButton,
+  DSCard,
+  DSDivider,
+  DSInput,
+  DSSurface,
+  DSText,
+  useDSTheme,
+  type DSTone,
+} from '@/design-system';
 import type { Article } from '@/types/article';
 
 interface DraftEditorPaneProps {
@@ -23,34 +26,24 @@ interface DraftEditorPaneProps {
   onReject: (id: string) => Promise<void>;
 }
 
-export function DraftEditorPane({
+function getScoreTone(score: number): DSTone {
+  if (score >= 85) return 'success';
+  if (score >= 65) return 'warning';
+  return 'danger';
+}
+
+function DraftEditorForm({
   article,
   adminUid,
   onSaveChanges,
   onApprove,
   onReject,
-}: DraftEditorPaneProps) {
-  const [headline, setHeadline] = useState('');
-  const [summary, setSummary] = useState('');
+}: Omit<DraftEditorPaneProps, 'article'> & { article: Article }) {
+  const { theme } = useDSTheme();
+  const [headline, setHeadline] = useState(article.ai_headline);
+  const [summary, setSummary] = useState(article.ai_summary);
   const [busyAction, setBusyAction] = useState<'save' | 'approve' | 'reject' | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-
-  useEffect(() => {
-    setHeadline(article?.ai_headline ?? '');
-    setSummary(article?.ai_summary ?? '');
-    setFeedback(null);
-    setBusyAction(null);
-  }, [article?.id, article?.ai_headline, article?.ai_summary]);
-
-  if (!article) {
-    return (
-      <View className="flex-1 bg-paper items-center justify-center p-8">
-        <Text className="text-xl font-semibold text-ink/70 text-center">
-          Select a draft from the queue to review and edit.
-        </Text>
-      </View>
-    );
-  }
 
   const isDirty =
     headline.trim() !== article.ai_headline.trim() ||
@@ -94,37 +87,32 @@ export function DraftEditorPane({
   };
 
   return (
-    <View className="flex-1 bg-paper">
-      <ScrollView className="flex-1 p-6 md:p-8">
-        <View className="max-w-3xl w-full self-center">
-          {/* Top: Source link & Judge metadata */}
-          <View className="bg-white border border-stone-200 rounded-2xl p-5 mb-6">
-            <View className="flex-row flex-wrap items-center justify-between gap-2 mb-3">
-              <Text className="text-sm font-semibold text-ink/60">
-                Date: {article.date}
-                {article.topic ? ` • ${article.topic}` : ''}
-                {article.region ? ` • ${article.region}` : ''}
-                {article.source_count ? ` • ${article.source_count} outlets` : ''}
-              </Text>
-              <Pressable
-                onPress={() => Linking.openURL(article.original_url)}
-                className="bg-stone-100 px-3 py-1.5 rounded-lg"
-              >
-                <Text className="text-sm font-semibold text-accent">
-                  Open Original Source ↗
-                </Text>
-              </Pressable>
-            </View>
-
-            <Text
-              numberOfLines={1}
-              className="text-xs text-ink/50 mb-3"
-            >
-              {article.original_url}
-            </Text>
-
+    <View style={{ flex: 1, backgroundColor: theme.colors.canvas }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: theme.spacing.xxl,
+          paddingVertical: theme.spacing.xl,
+          gap: theme.spacing.lg,
+        }}
+      >
+        {/* Top: Source link & Judge metadata */}
+        <DSCard
+          headerTitle={`${article.date}${article.topic ? ` · ${article.topic}` : ''}${article.region ? ` · ${article.region}` : ''}${article.source_count ? ` · ${article.source_count} outlets` : ''}`}
+          headerSubtitle={article.original_url}
+          headerRight={
+            <DSButton
+              label="Open Original Source ↗"
+              variant="secondary"
+              size="sm"
+              onPress={() => Linking.openURL(article.original_url)}
+            />
+          }
+          padding="lg"
+        >
+          <View style={{ gap: theme.spacing.md }}>
             {/* Four Judge Scores */}
-            <View className="flex-row flex-wrap gap-2 mb-3">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
               {(
                 [
                   ['Accuracy', article.scores?.accuracy ?? article.confidence_score],
@@ -132,211 +120,267 @@ export function DraftEditorPane({
                   ['Safety (G)', article.scores?.safety ?? article.confidence_score],
                   ['Readability (Gr 6)', article.scores?.readability ?? article.confidence_score],
                 ] as const
-              ).map(([label, score]) => {
-                const badgeClass =
-                  score >= 85
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : score >= 65
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-red-100 text-red-800';
-                return (
-                  <View key={label} className={`px-3 py-1 rounded-full ${badgeClass}`}>
-                    <Text className="text-xs font-bold">
-                      {label}: {score}/100
-                    </Text>
-                  </View>
-                );
-              })}
+              ).map(([label, score]) => (
+                <DSBadge
+                  key={label}
+                  label={`${label}: ${score}/100`}
+                  tone={getScoreTone(score)}
+                />
+              ))}
             </View>
 
             {/* Flags & Judge Pass */}
             {(article.flags && article.flags.length > 0) ||
             article.sensitive ||
             article.judge_pass !== undefined ? (
-              <View className="flex-row flex-wrap gap-1.5 mb-3">
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs }}>
                 {article.judge_pass !== undefined ? (
-                  <View
-                    className={`px-2.5 py-1 rounded-full ${
-                      article.judge_pass ? 'bg-emerald-100' : 'bg-amber-100'
-                    }`}
-                  >
-                    <Text
-                      className={`text-xs font-bold ${
-                        article.judge_pass ? 'text-emerald-800' : 'text-amber-900'
-                      }`}
-                    >
-                      {article.judge_pass ? 'AUTO-PASS' : 'NEEDS REVIEW'}
-                    </Text>
-                  </View>
+                  <DSBadge
+                    label={article.judge_pass ? 'Auto-pass' : 'Needs review'}
+                    tone={article.judge_pass ? 'success' : 'warning'}
+                  />
                 ) : null}
-                {article.sensitive ? (
-                  <View className="bg-amber-100 px-2.5 py-1 rounded-full">
-                    <Text className="text-xs font-bold text-amber-900">
-                      SENSITIVE
-                    </Text>
-                  </View>
-                ) : null}
+                {article.sensitive ? <DSBadge label="Sensitive" tone="warning" /> : null}
                 {(article.flags ?? []).map((flag) => (
-                  <View key={flag} className="bg-rose-100 px-2.5 py-1 rounded-full">
-                    <Text className="text-xs font-bold text-rose-800">
-                      {flag}
-                    </Text>
-                  </View>
+                  <DSBadge key={flag} label={flag} tone="danger" />
                 ))}
               </View>
             ) : null}
 
             {article.selection_reason ? (
-              <View className="bg-paper border border-stone-200 rounded-xl p-3 mb-3">
-                <Text className="text-xs font-bold uppercase tracking-wider text-ink/50 mb-1">
+              <DSSurface
+                variant="muted"
+                radius="md"
+                bordered
+                style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
+              >
+                <DSText variant="micro" weight="semibold" tone="tertiary">
                   Selection Rationale
-                </Text>
-                <Text className="text-sm text-ink/80 leading-relaxed">
+                </DSText>
+                <DSText variant="body" tone="secondary">
                   {article.selection_reason}
-                </Text>
-              </View>
+                </DSText>
+              </DSSurface>
             ) : null}
 
             {article.ai_explanation ? (
-              <View className="bg-paper border border-stone-200 rounded-xl p-3 mb-3">
-                <Text className="text-xs font-bold uppercase tracking-wider text-ink/50 mb-1">
-                  Background Explanation ("What&apos;s this about?")
-                </Text>
-                <Text className="text-sm text-ink/80 leading-relaxed">
+              <DSSurface
+                variant="muted"
+                radius="md"
+                bordered
+                style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
+              >
+                <DSText variant="micro" weight="semibold" tone="tertiary">
+                  Background Explanation (“What’s this about?”)
+                </DSText>
+                <DSText variant="body" tone="secondary">
                   {article.ai_explanation}
-                </Text>
-              </View>
+                </DSText>
+              </DSSurface>
             ) : null}
 
-            <View className="bg-paper border border-stone-200 rounded-xl p-3">
-              <Text className="text-xs font-bold uppercase tracking-wider text-ink/50 mb-1">
+            <DSSurface
+              variant="muted"
+              radius="md"
+              bordered
+              style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
+            >
+              <DSText variant="micro" weight="semibold" tone="tertiary">
                 Judge Reasoning
-              </Text>
-              <Text className="text-sm text-ink/80 leading-relaxed">
+              </DSText>
+              <DSText variant="body" tone="secondary">
                 {article.confidence_reasoning || 'No reasoning recorded.'}
-              </Text>
-            </View>
+              </DSText>
+            </DSSurface>
 
             {/* Claim-by-Claim Evidence */}
             {article.claims && article.claims.length > 0 ? (
-              <View className="mt-3 bg-paper border border-stone-200 rounded-xl p-3">
-                <Text className="text-xs font-bold uppercase tracking-wider text-ink/50 mb-2">
+              <DSSurface
+                variant="muted"
+                radius="md"
+                bordered
+                style={{ padding: theme.spacing.md, gap: theme.spacing.sm }}
+              >
+                <DSText variant="micro" weight="semibold" tone="tertiary">
                   Claims & Source Evidence
-                </Text>
-                <View className="gap-2.5">
+                </DSText>
+                <View style={{ gap: theme.spacing.sm }}>
                   {article.claims.map((item, idx) => {
                     const isUnsupported =
                       item.evidence.trim().toLowerCase() === 'unsupported';
                     return (
                       <View
                         key={`${idx}-${item.claim.slice(0, 20)}`}
-                        className="border-b border-stone-200 pb-2 last:border-b-0 last:pb-0"
+                        style={{ gap: theme.spacing.xs }}
                       >
-                        <Text className="text-sm font-semibold text-ink mb-0.5">
+                        {idx > 0 ? <DSDivider /> : null}
+                        <DSText variant="body" weight="semibold" tone="primary">
                           Claim: {item.claim}
-                        </Text>
-                        <Text
-                          className={`text-xs leading-relaxed ${
-                            isUnsupported
-                              ? 'text-red-700 font-bold'
-                              : 'text-ink/70'
-                          }`}
+                        </DSText>
+                        <DSText
+                          variant="caption"
+                          weight={isUnsupported ? 'semibold' : 'regular'}
+                          tone={isUnsupported ? 'danger' : 'secondary'}
                         >
                           Evidence: {item.evidence}
-                        </Text>
+                        </DSText>
                       </View>
                     );
                   })}
                 </View>
-              </View>
+              </DSSurface>
             ) : null}
           </View>
+        </DSCard>
 
-          {/* Middle: Headline & Summary Textareas */}
-          <View className="bg-white border border-stone-200 rounded-2xl p-6 mb-6">
-            <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-sm font-bold uppercase tracking-wider text-ink/60">
+        {/* Middle: Headline & Summary Textareas */}
+        <DSCard headerTitle="Editorial Copy" padding="lg">
+          <View style={{ gap: theme.spacing.md }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <DSText variant="micro" weight="semibold" tone="tertiary">
                 Headline
-              </Text>
+              </DSText>
               {isDirty ? (
-                <Text className="text-xs font-semibold text-amber-700">
+                <DSText variant="caption" weight="semibold" tone="warning">
                   Unsaved edits
-                </Text>
+                </DSText>
               ) : null}
             </View>
-            <TextInput
+            <DSInput
               value={headline}
               onChangeText={setHeadline}
               multiline
-              className="border border-stone-300 rounded-xl p-4 text-xl font-bold text-ink bg-paper mb-6 min-h-[72px]"
+              style={[
+                theme.typography.headline,
+                { fontWeight: '600', minHeight: 68 },
+              ]}
             />
 
-            <Text className="text-sm font-bold uppercase tracking-wider text-ink/60 mb-2">
+            <DSText variant="micro" weight="semibold" tone="tertiary">
               Summary
-            </Text>
-            <TextInput
+            </DSText>
+            <DSInput
               value={summary}
               onChangeText={setSummary}
               multiline
               textAlignVertical="top"
-              className="border border-stone-300 rounded-xl p-4 text-lg text-ink bg-paper min-h-[180px] leading-relaxed"
+              style={{ minHeight: 168 }}
             />
           </View>
+        </DSCard>
 
-          {feedback ? (
-            <View className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 mb-4">
-              <Text className="text-sm font-medium text-teal-800">{feedback}</Text>
-            </View>
-          ) : null}
-        </View>
+        {feedback ? (
+          <DSSurface
+            radius="md"
+            bordered
+            style={{
+              backgroundColor: theme.colors.accentSoft,
+              borderColor: theme.colors.accentBorder,
+              paddingHorizontal: theme.spacing.lg,
+              paddingVertical: theme.spacing.md,
+            }}
+          >
+            <DSText variant="footnote" weight="medium" tone="accent">
+              {feedback}
+            </DSText>
+          </DSSurface>
+        ) : null}
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <View className="border-t border-stone-200 bg-white px-6 py-4">
-        <View className="max-w-3xl w-full self-center flex-row flex-wrap items-center justify-between gap-3">
-          <Pressable
-            onPress={handleReject}
+      <View
+        style={{
+          borderTopWidth: theme.layout.borderWidth,
+          borderTopColor: theme.colors.borderDefault,
+          backgroundColor: theme.colors.surface,
+          paddingHorizontal: theme.spacing.xxl,
+          paddingVertical: theme.spacing.md,
+        }}
+      >
+        <View
+          style={{
+            width: '100%',
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: theme.spacing.md,
+          }}
+        >
+          <DSButton
+            label="Reject"
+            variant="danger"
+            size="md"
+            loading={busyAction === 'reject'}
             disabled={busyAction !== null}
-            className="border border-red-300 bg-red-50 rounded-xl px-5 py-3"
-          >
-            {busyAction === 'reject' ? (
-              <ActivityIndicator color="#B91C1C" />
-            ) : (
-              <Text className="text-red-700 font-semibold text-base">Reject</Text>
-            )}
-          </Pressable>
+            onPress={handleReject}
+          />
 
-          <View className="flex-row items-center gap-3">
-            <Pressable
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+            <DSButton
+              label="Save Changes"
+              variant="secondary"
+              size="md"
+              loading={busyAction === 'save'}
+              disabled={busyAction !== null}
               onPress={handleSave}
+            />
+            <DSButton
+              label="Approve & Publish"
+              variant="primary"
+              size="md"
+              loading={busyAction === 'approve'}
               disabled={busyAction !== null}
-              className="border border-stone-300 bg-white rounded-xl px-5 py-3"
-            >
-              {busyAction === 'save' ? (
-                <ActivityIndicator color="#1C1917" />
-              ) : (
-                <Text className="text-ink font-semibold text-base">
-                  Save Changes
-                </Text>
-              )}
-            </Pressable>
-
-            <Pressable
               onPress={handleApprove}
-              disabled={busyAction !== null}
-              className="bg-accent rounded-xl px-6 py-3"
-            >
-              {busyAction === 'approve' ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text className="text-white font-semibold text-base">
-                  Approve & Publish
-                </Text>
-              )}
-            </Pressable>
+            />
           </View>
         </View>
       </View>
     </View>
+  );
+}
+
+export function DraftEditorPane({
+  article,
+  adminUid,
+  onSaveChanges,
+  onApprove,
+  onReject,
+}: DraftEditorPaneProps) {
+  const { theme } = useDSTheme();
+
+  if (!article) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.canvas,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: theme.spacing.xxxl,
+        }}
+      >
+        <DSText variant="title3" weight="semibold" tone="secondary" center>
+          Select a draft from the queue to review and edit.
+        </DSText>
+      </View>
+    );
+  }
+
+  return (
+    <DraftEditorForm
+      key={article.id}
+      article={article}
+      adminUid={adminUid}
+      onSaveChanges={onSaveChanges}
+      onApprove={onApprove}
+      onReject={onReject}
+    />
   );
 }

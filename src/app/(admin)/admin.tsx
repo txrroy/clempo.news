@@ -7,8 +7,16 @@ import {
   applyArticleFilters,
   type ArticleFilterState,
 } from '@/components/admin/ArticleInboxList';
-import { ArticleReaderDrawer } from '@/components/admin/ArticleReaderDrawer';
-import { EditorOverviewPane } from '@/components/admin/EditorOverviewPane';
+import {
+  ArticleReaderDrawer,
+  ArticleReaderPane,
+} from '@/components/admin/ArticleReaderDrawer';
+import { VerticalSplitPane } from '@/components/admin/BottomDrawer';
+import { DesignSystemPane } from '@/components/admin/DesignSystemPane';
+import {
+  EditorOverviewPane,
+  HowItWorksPane,
+} from '@/components/admin/EditorOverviewPane';
 import {
   InboxSidebar,
   formatEditionDate,
@@ -19,25 +27,42 @@ import { LivePipelineDrawer } from '@/components/admin/LivePipelineDrawer';
 import { PolicyGovernancePane } from '@/components/admin/PolicyGovernancePane';
 import { SourcesPane } from '@/components/admin/SourcesPane';
 import {
-  DSButton,
+  DSPage,
   DSSegmentedControl,
+  DSSurface,
   DSText,
   DSThemeProvider,
   useDSTheme,
 } from '@/design-system';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useAdminArticles } from '@/hooks/useArticles';
-import { useAgentPolicy, useSourcesConfig } from '@/hooks/useGovernance';
+import {
+  useAgentPolicy,
+  useLatestPipelineRun,
+  useSourcesConfig,
+} from '@/hooks/useGovernance';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type DashboardView = 'overview' | 'inbox' | 'settings';
+type DashboardView =
+  | 'overview'
+  | 'inbox'
+  | 'how-it-works'
+  | 'design-system'
+  | 'settings';
 type SettingsSubTab = 'policy' | 'sources' | 'analytics';
 
 const MAIN_TABS: readonly { id: DashboardView; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'inbox', label: 'Approval Inbox' },
+  { id: 'how-it-works', label: 'How it works' },
+  { id: 'design-system', label: 'Design System' },
 ];
 
 const SETTINGS_TABS: readonly { id: SettingsSubTab; label: string }[] = [
@@ -48,6 +73,8 @@ const SETTINGS_TABS: readonly { id: SettingsSubTab; label: string }[] = [
 
 function AdminDashboardContent() {
   const { theme } = useDSTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const isMailboxDesktop = windowWidth >= 900;
   const {
     user,
     loading: authLoading,
@@ -90,6 +117,8 @@ function AdminDashboardContent() {
     removeSource,
     resetDefaults,
   } = useSourcesConfig(isAuthorized);
+
+  const latestRunLog = useLatestPipelineRun(isAuthorized);
 
   const [activeView, setActiveView] = useState<DashboardView>('overview');
   const [settingsTab, setSettingsTab] = useState<SettingsSubTab>('policy');
@@ -261,24 +290,56 @@ function AdminDashboardContent() {
   }
 
   const userEmail = user.email ?? 'editor';
+  const showDesktopInboxSplit = activeView === 'inbox' && isMailboxDesktop;
+
+  const sharedReaderProps = {
+    adminUid: user.uid,
+    hasPrev,
+    hasNext,
+    getIdToken,
+    onClose: () => setSelectedArticleId(null),
+    closeLabel: 'Close',
+    onSaveChanges: saveChanges,
+    onApprove: approveArticle,
+    onReject: rejectArticle,
+    onUnpublish: unpublishArticle,
+    onConfirmKidsTopic: confirmKidsTopic,
+    onConfirmSourceChecked: confirmSourceChecked,
+  };
+
+  const inboxListNode = (
+    <ArticleInboxList
+      folderTitle={folderTitle}
+      articles={folderArticles}
+      filteredArticles={filteredArticles}
+      filters={filters}
+      showStatusFilter={selectedFolder.type === 'older-date'}
+      selectedArticleId={selectedArticleId}
+      onChangeFilters={setFilters}
+      onSelectArticle={setSelectedArticleId}
+      onBatchApprove={(ids) => batchApproveArticles(ids, user.uid)}
+      onBatchReject={batchRejectArticles}
+      onUnpublish={unpublishArticle}
+    />
+  );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.canvas }}>
+    <SafeAreaView
+      style={{ flex: 1, minHeight: 0, backgroundColor: theme.colors.canvas }}
+    >
       {/* Minimalistic Editorial Top Bar */}
       <View
         style={{
           backgroundColor: theme.colors.canvas,
           borderBottomWidth: theme.layout.borderWidth,
-          borderBottomColor: theme.colors.borderSubtle,
+          borderBottomColor: theme.colors.borderDefault,
           paddingHorizontal: theme.spacing.xxl,
           paddingVertical: theme.spacing.md,
         }}
       >
         <View
           style={{
-            maxWidth: theme.layout.contentMaxWidth + 280,
             width: '100%',
-            alignSelf: 'center',
             flexDirection: 'row',
             flexWrap: 'wrap',
             alignItems: 'center',
@@ -309,7 +370,7 @@ function AdminDashboardContent() {
               <Image
                 source={require('../../../assets/images/snappylit-logo-v3.png')}
                 contentFit="contain"
-                style={{ width: 28, height: 28, borderRadius: 7 }}
+                style={{ width: 28, height: 28, borderRadius: theme.radii.sm }}
               />
               <DSText variant="footnote" weight="bold" tone="primary">
                 SnappyLit Studio
@@ -368,18 +429,6 @@ function AdminDashboardContent() {
               gap: theme.spacing.md,
             }}
           >
-            <Pressable
-              onPress={() => setLivePipelineOpen(true)}
-              style={({ pressed }) => ({
-                paddingVertical: theme.spacing.xs,
-                opacity: pressed ? 0.65 : 1,
-              })}
-            >
-              <DSText variant="caption" weight="semibold" tone="primary">
-                Run pipeline
-              </DSText>
-            </Pressable>
-
             <DSText variant="caption" tone="tertiary">
               {userEmail.split('@')[0]}
             </DSText>
@@ -438,13 +487,19 @@ function AdminDashboardContent() {
           articles={articles}
           today={effectiveOverviewDate}
           activePolicy={activePolicy}
+          latestRunLog={latestRunLog}
+          enabledSourcesCount={sources.filter((s) => s.enabled).length}
           onOpenInbox={(folder, articleId, viewFilter) => {
+            if (articleId) {
+              setSelectedArticleId(articleId);
+              return;
+            }
             setSelectedFolder(folder);
             setFilters({
               ...INITIAL_FILTERS,
               view: viewFilter ?? 'all',
             });
-            setSelectedArticleId(articleId ?? null);
+            setSelectedArticleId(null);
             setActiveView('inbox');
           }}
           onOpenLivePipeline={() => setLivePipelineOpen(true)}
@@ -452,80 +507,96 @@ function AdminDashboardContent() {
             setSettingsTab('policy');
             setActiveView('settings');
           }}
+          onSetAutoPublishReady={async (enabled) => {
+            await savePolicyVersion({
+              settings: {
+                ...activePolicy.settings,
+                auto_publish_ready: enabled,
+              },
+              adminInstructions: activePolicy.admin_instructions,
+              changeNote: enabled
+                ? 'Enabled auto-publish for Ready stories from Overview'
+                : 'Paused auto-publish for Ready stories from Overview',
+              userEmail,
+              isAdmin,
+            });
+          }}
         />
       ) : activeView === 'inbox' ? (
-        <View
-          style={{
-            position: 'relative',
-            flex: 1,
-            overflow: 'hidden',
-          }}
-          className="flex-col md:flex-row"
+        <DSPage
+          title="Approval Inbox"
+          subtitle="Review, edit, and approve drafted stories before publishing."
+          scrollable={false}
         >
-          <InboxSidebar
-            allPendingCount={allPending.length}
-            allPublishedCount={allPublished.length}
-            todayPublishedCount={todayPublished.length}
-            todayPendingCount={todayPending.length}
-            olderDates={olderDates}
-            selectedFolder={selectedFolder}
-            onSelectFolder={handleSelectFolder}
-          />
-
-          <ArticleInboxList
-            folderTitle={folderTitle}
-            articles={folderArticles}
-            filteredArticles={filteredArticles}
-            filters={filters}
-            showStatusFilter={selectedFolder.type === 'older-date'}
-            selectedArticleId={selectedArticleId}
-            onChangeFilters={setFilters}
-            onSelectArticle={setSelectedArticleId}
-            onBatchApprove={(ids) => batchApproveArticles(ids, user.uid)}
-            onBatchReject={batchRejectArticles}
-            onUnpublish={unpublishArticle}
-          />
-        </View>
-      ) : (
-        <View style={{ flex: 1 }}>
-          {/* System Settings Sub-Bar */}
-          <View
+          <DSSurface
+            variant="surface"
+            radius="md"
+            bordered
             style={{
-              backgroundColor: theme.colors.surfaceHeader,
-              borderBottomWidth: theme.layout.borderWidth,
-              borderBottomColor: theme.colors.borderSubtle,
-              paddingHorizontal: theme.spacing.xl,
-              paddingVertical: theme.spacing.sm,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: theme.spacing.md,
+              position: 'relative',
+              flex: 1,
+              minHeight: 0,
+              width: '100%',
+              overflow: 'hidden',
+              ...theme.shadows.card,
             }}
+            className="flex-col md:flex-row"
           >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: theme.spacing.md,
-              }}
-            >
-              <DSButton
-                label="← Overview"
-                variant="ghost"
-                size="sm"
-                onPress={() => setActiveView('overview')}
+            <InboxSidebar
+              allPendingCount={allPending.length}
+              allPublishedCount={allPublished.length}
+              todayPublishedCount={todayPublished.length}
+              todayPendingCount={todayPending.length}
+              olderDates={olderDates}
+              selectedFolder={selectedFolder}
+              onSelectFolder={handleSelectFolder}
+            />
+
+            {isMailboxDesktop ? (
+              <VerticalSplitPane
+                storageKey="snappylit_admin_inbox_split_ratio_v1"
+                topContent={inboxListNode}
+                bottomContent={
+                  selectedArticle ? (
+                    <ArticleReaderPane
+                      key={selectedArticle.id}
+                      article={selectedArticle}
+                      onPrev={handlePrev}
+                      onNext={handleNext}
+                      {...sharedReaderProps}
+                    />
+                  ) : null
+                }
               />
-              <DSText variant="subhead" weight="bold" tone="primary">
-                System Settings
-              </DSText>
-            </View>
+            ) : (
+              inboxListNode
+            )}
+          </DSSurface>
+        </DSPage>
+      ) : activeView === 'how-it-works' ? (
+        <HowItWorksPane
+          articles={articles}
+          today={effectiveOverviewDate}
+          activePolicy={activePolicy}
+          onOpenSettings={() => {
+            setSettingsTab('policy');
+            setActiveView('settings');
+          }}
+        />
+      ) : activeView === 'design-system' ? (
+        <DesignSystemPane />
+      ) : (
+        <DSPage
+          title="Settings"
+          subtitle="Manage editorial policy, RSS sources, and prompt analytics."
+          headerRight={
             <DSSegmentedControl
               options={SETTINGS_TABS}
               value={settingsTab}
               onChange={setSettingsTab}
             />
-          </View>
-
+          }
+        >
           {settingsTab === 'policy' ? (
             <PolicyGovernancePane
               activePolicy={activePolicy}
@@ -549,26 +620,18 @@ function AdminDashboardContent() {
           ) : (
             <AnalyticsPane articles={articles} />
           )}
-        </View>
+        </DSPage>
       )}
 
-      {/* Article Reader & Editor Drawer */}
-      <ArticleReaderDrawer
-        article={selectedArticle}
-        adminUid={user.uid}
-        hasPrev={hasPrev}
-        hasNext={hasNext}
-        getIdToken={getIdToken}
-        onPrev={handlePrev}
-        onNext={handleNext}
-        onClose={() => setSelectedArticleId(null)}
-        onSaveChanges={saveChanges}
-        onApprove={approveArticle}
-        onReject={rejectArticle}
-        onUnpublish={unpublishArticle}
-        onConfirmKidsTopic={confirmKidsTopic}
-        onConfirmSourceChecked={confirmSourceChecked}
-      />
+      {/* Article Reader & Editor Drawer (Overview, other tabs, and mobile Inbox) */}
+      {!showDesktopInboxSplit ? (
+        <ArticleReaderDrawer
+          article={selectedArticle}
+          onPrev={activeView === 'inbox' ? handlePrev : undefined}
+          onNext={activeView === 'inbox' ? handleNext : undefined}
+          {...sharedReaderProps}
+        />
+      ) : null}
 
       {/* Live Multi-Agent Pipeline Visualizer Drawer */}
       <LivePipelineDrawer
@@ -587,7 +650,7 @@ function AdminDashboardContent() {
 
 export default function AdminDashboardScreen() {
   return (
-    <DSThemeProvider initialTheme="apple-hig">
+    <DSThemeProvider initialTheme="warm-editorial">
       <AdminDashboardContent />
     </DSThemeProvider>
   );

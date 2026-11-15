@@ -1,14 +1,23 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
 import {
-  useDSTheme,
-  DSText,
-  DSChip,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
+import {
   DSBadge,
   DSButton,
-  DSInput,
-  DSDivider,
   DSCard,
+  DSChip,
+  DSInput,
+  DSSurface,
+  DSTableHeader,
+  DSTableRow,
+  DSText,
+  useDSTheme,
   type DSTone,
 } from '@/design-system';
 import type { Article, ArticleStatus } from '@/types/article';
@@ -46,6 +55,8 @@ const FOUR_VIEWS: {
   { id: 'unverified', label: 'Could not verify' },
   { id: 'sensitive', label: 'Sensitive' },
 ];
+
+type BulkActionKind = 'approve' | 'reject' | 'unpublish';
 
 interface ArticleInboxListProps {
   folderTitle: string;
@@ -139,6 +150,63 @@ export function applyArticleFilters(
   });
 }
 
+interface InboxCheckboxProps {
+  checked: boolean;
+  indeterminate?: boolean;
+  accessibilityLabel: string;
+  onPress: (e: GestureResponderEvent) => void;
+}
+
+function InboxCheckbox({
+  checked,
+  indeterminate = false,
+  accessibilityLabel,
+  onPress,
+}: InboxCheckboxProps) {
+  const { theme } = useDSTheme();
+  const isActive = checked || indeterminate;
+
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ checked: indeterminate ? 'mixed' : checked }}
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onPress(e);
+      }}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        width: 18,
+        height: 18,
+        borderRadius: theme.radii.xs,
+        borderWidth: 1.5,
+        borderColor: isActive
+          ? theme.colors.accent
+          : theme.colors.borderDefault,
+        backgroundColor: isActive ? theme.colors.accent : theme.colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.8 : 1,
+        ...(Platform.OS === 'web'
+          ? ({ cursor: 'pointer' } as Record<string, unknown>)
+          : {}),
+      })}
+    >
+      {isActive ? (
+        <DSText
+          variant="micro"
+          weight="bold"
+          tone="inverse"
+          style={{ lineHeight: 13 }}
+        >
+          {indeterminate ? '—' : '✓'}
+        </DSText>
+      ) : null}
+    </Pressable>
+  );
+}
+
 export function ArticleInboxList({
   folderTitle,
   articles,
@@ -149,10 +217,15 @@ export function ArticleInboxList({
   onChangeFilters,
   onSelectArticle,
   onBatchApprove,
+  onBatchReject,
   onUnpublish,
 }: ArticleInboxListProps) {
   const { theme } = useDSTheme();
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [modalAction, setModalAction] = useState<{
+    kind: BulkActionKind;
+    items: Article[];
+  } | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [unpublishingId, setUnpublishingId] = useState<string | null>(null);
 
@@ -178,6 +251,60 @@ export function ArticleInboxList({
     };
   }, [articles]);
 
+  const filteredIdSet = useMemo(
+    () => new Set(filteredArticles.map((a) => a.id)),
+    [filteredArticles]
+  );
+
+  const validCheckedIds = useMemo(
+    () => checkedIds.filter((id) => filteredIdSet.has(id)),
+    [checkedIds, filteredIdSet]
+  );
+
+  const validCheckedSet = useMemo(
+    () => new Set(validCheckedIds),
+    [validCheckedIds]
+  );
+
+  const selectedRows = useMemo(
+    () => filteredArticles.filter((a) => validCheckedSet.has(a.id)),
+    [filteredArticles, validCheckedSet]
+  );
+
+  const approvableSelected = useMemo(
+    () => selectedRows.filter((a) => a.status !== 'published'),
+    [selectedRows]
+  );
+  const rejectableSelected = useMemo(
+    () => selectedRows.filter((a) => a.status !== 'rejected'),
+    [selectedRows]
+  );
+  const unpublishableSelected = useMemo(
+    () => selectedRows.filter((a) => a.status === 'published'),
+    [selectedRows]
+  );
+
+  const allVisibleChecked =
+    filteredArticles.length > 0 &&
+    validCheckedIds.length === filteredArticles.length;
+  const someVisibleChecked =
+    validCheckedIds.length > 0 && !allVisibleChecked;
+
+  const toggleRow = (id: string) => {
+    setCheckedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllVisible = () => {
+    if (allVisibleChecked) {
+      setCheckedIds((prev) => prev.filter((id) => !filteredIdSet.has(id)));
+    } else {
+      const visibleIds = filteredArticles.map((a) => a.id);
+      setCheckedIds(visibleIds);
+    }
+  };
+
   const readyDraftsInView = useMemo(
     () =>
       filteredArticles.filter(
@@ -188,18 +315,26 @@ export function ArticleInboxList({
     [filteredArticles]
   );
 
-  // Fix 11: Remove "Select All (33)". Allow bulk approval only in the "Ready" view.
   const canBulkApproveReady =
+    selectedRows.length === 0 &&
     filters.view === 'ready' &&
     readyDraftsInView.length > 0 &&
     Boolean(onBatchApprove);
 
-  const handleConfirmBatch = async () => {
-    if (!onBatchApprove || readyDraftsInView.length === 0) return;
+  const handleConfirmBulkAction = async () => {
+    if (!modalAction || modalAction.items.length === 0) return;
+    const ids = modalAction.items.map((a) => a.id);
     setBatchBusy(true);
     try {
-      await onBatchApprove(readyDraftsInView.map((a) => a.id));
-      setBatchModalOpen(false);
+      if (modalAction.kind === 'approve' && onBatchApprove) {
+        await onBatchApprove(ids);
+      } else if (modalAction.kind === 'reject' && onBatchReject) {
+        await onBatchReject(ids);
+      } else if (modalAction.kind === 'unpublish' && onUnpublish) {
+        await Promise.all(ids.map((id) => onUnpublish(id)));
+      }
+      setCheckedIds((prev) => prev.filter((id) => !ids.includes(id)));
+      setModalAction(null);
     } finally {
       setBatchBusy(false);
     }
@@ -220,23 +355,31 @@ export function ArticleInboxList({
     filters.view !== 'all' ||
     filters.status !== 'all';
 
+  const nonReadyApproveCount =
+    modalAction?.kind === 'approve'
+      ? modalAction.items.filter(
+          (a) => getEditorialState(a) !== 'Ready to approve'
+        ).length
+      : 0;
+
   return (
     <View
       style={{
         flex: 1,
         minWidth: 0,
+        minHeight: 0,
         backgroundColor: theme.colors.surface,
       }}
     >
-      {/* Top Search & Folder Header */}
+      {/* Top Folder Header, Search & Filter Bar — flush inside the unified inbox */}
       <View
         style={{
           paddingHorizontal: theme.spacing.lg,
           paddingVertical: theme.spacing.md,
-          borderBottomWidth: theme.layout.borderWidth,
-          borderBottomColor: theme.colors.borderSubtle,
-          backgroundColor: theme.colors.surface,
           gap: theme.spacing.md,
+          borderBottomWidth: theme.layout.borderWidth,
+          borderBottomColor: theme.colors.borderDefault,
+          backgroundColor: theme.colors.surface,
         }}
       >
         <View
@@ -255,10 +398,10 @@ export function ArticleInboxList({
               gap: theme.spacing.sm,
             }}
           >
-            <DSText variant="headline" weight="bold" tone="primary">
+            <DSText variant="title3" weight="semibold" tone="primary">
               {folderTitle}
             </DSText>
-            <DSText variant="caption" tone="tertiary">
+            <DSText variant="caption" tone="tertiary" tabularNums>
               {filteredArticles.length === articles.length
                 ? `${articles.length} stories`
                 : `${filteredArticles.length} of ${articles.length}`}
@@ -284,7 +427,6 @@ export function ArticleInboxList({
                 placeholder="Search headline, summary, source..."
                 compact
                 style={{
-                  borderRadius: theme.radii.pill,
                   paddingRight: filters.search
                     ? theme.spacing.xxxl
                     : theme.spacing.md,
@@ -313,14 +455,12 @@ export function ArticleInboxList({
                 label="Show all"
                 variant="secondary"
                 size="sm"
-                pill
                 onPress={() => onChangeFilters(INITIAL_FILTERS)}
               />
             ) : null}
           </View>
         </View>
 
-        {/* Fix 5: Replace the filter chips with four views: "Ready", "Needs a check", "Could not verify", "Sensitive" */}
         {articles.length > 0 ? (
           <View
             style={{
@@ -395,23 +535,131 @@ export function ArticleInboxList({
               ) : null}
             </View>
 
-            {/* Fix 11: Allow bulk approval ONLY in the "Ready" view */}
             {canBulkApproveReady ? (
               <DSButton
                 label={`Approve all Ready (${readyDraftsInView.length})`}
-                variant="accent"
+                variant="primary"
                 size="sm"
-                pill
                 disabled={batchBusy}
-                onPress={() => setBatchModalOpen(true)}
+                onPress={() =>
+                  setModalAction({ kind: 'approve', items: readyDraftsInView })
+                }
               />
             ) : null}
           </View>
         ) : null}
       </View>
 
-      {/* Fix 3: Show the plain reason in list rows. Move numeric scores to detail view. */}
-      <ScrollView style={{ flex: 1 }}>
+      {/* Contextual Bulk Actions Bar when rows are checked */}
+      {selectedRows.length > 0 ? (
+        <DSSurface
+          style={{
+            backgroundColor: theme.colors.accentSoft,
+            borderBottomWidth: theme.layout.borderWidth,
+            borderBottomColor: theme.colors.borderDefault,
+            paddingHorizontal: theme.spacing.lg,
+            paddingVertical: theme.spacing.sm,
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: theme.spacing.sm,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+            }}
+          >
+            <DSText variant="footnote" weight="semibold" tone="primary" tabularNums>
+              {selectedRows.length}{' '}
+              {selectedRows.length === 1 ? 'story' : 'stories'} selected
+            </DSText>
+            <DSButton
+              label="Clear"
+              variant="ghost"
+              size="sm"
+              disabled={batchBusy}
+              onPress={() => setCheckedIds([])}
+            />
+          </View>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+            }}
+          >
+            {approvableSelected.length > 0 && onBatchApprove ? (
+              <DSButton
+                label={`Approve (${approvableSelected.length})`}
+                variant="primary"
+                size="sm"
+                disabled={batchBusy}
+                onPress={() =>
+                  setModalAction({ kind: 'approve', items: approvableSelected })
+                }
+              />
+            ) : null}
+            {unpublishableSelected.length > 0 && onUnpublish ? (
+              <DSButton
+                label={`Unpublish (${unpublishableSelected.length})`}
+                variant="secondary"
+                size="sm"
+                disabled={batchBusy}
+                onPress={() =>
+                  setModalAction({
+                    kind: 'unpublish',
+                    items: unpublishableSelected,
+                  })
+                }
+              />
+            ) : null}
+            {rejectableSelected.length > 0 && onBatchReject ? (
+              <DSButton
+                label={`Reject (${rejectableSelected.length})`}
+                variant="danger"
+                size="sm"
+                disabled={batchBusy}
+                onPress={() =>
+                  setModalAction({ kind: 'reject', items: rejectableSelected })
+                }
+              />
+            ) : null}
+          </View>
+        </DSSurface>
+      ) : null}
+
+      {/* Table Header & Scrollable Rows — flush directly under filters/bulk bar */}
+      <DSTableHeader>
+        <InboxCheckbox
+          checked={allVisibleChecked}
+          indeterminate={someVisibleChecked}
+          accessibilityLabel="Select all visible stories"
+          onPress={toggleAllVisible}
+        />
+        <View className="w-24 md:w-32 shrink-0">
+          <DSText variant="micro" weight="semibold" tone="tertiary">
+            Source
+          </DSText>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <DSText variant="micro" weight="semibold" tone="tertiary">
+            Story & Review Note
+          </DSText>
+        </View>
+        <View style={{ width: 150, alignItems: 'flex-end' }}>
+          <DSText variant="micro" weight="semibold" tone="tertiary">
+            Status
+          </DSText>
+        </View>
+      </DSTableHeader>
+
+      <ScrollView showsVerticalScrollIndicator style={{ flex: 1, minHeight: 0 }}>
         {filteredArticles.length === 0 ? (
           <View
             style={{
@@ -421,7 +669,7 @@ export function ArticleInboxList({
               justifyContent: 'center',
             }}
           >
-            <DSText variant="subhead" weight="medium" tone="secondary" center>
+            <DSText variant="body" weight="medium" tone="secondary" center>
               {articles.length === 0
                 ? 'No stories in this folder.'
                 : 'No stories match this view.'}
@@ -431,15 +679,15 @@ export function ArticleInboxList({
                 label="Show all stories"
                 variant="secondary"
                 size="sm"
-                pill
                 onPress={() => onChangeFilters(INITIAL_FILTERS)}
                 style={{ marginTop: theme.spacing.md }}
               />
             ) : null}
           </View>
         ) : (
-          filteredArticles.map((item) => {
-            const isSelected = item.id === selectedArticleId;
+          filteredArticles.map((item, idx) => {
+            const isActiveDrawerRow = item.id === selectedArticleId;
+            const isChecked = validCheckedSet.has(item.id);
             const rowTone = getRowTone(item);
             const stateLabel = getRowStateLabel(item);
             const plainReason =
@@ -452,123 +700,94 @@ export function ArticleInboxList({
                   : getQueueReviewReason(item);
 
             return (
-              <View key={item.id}>
-                <Pressable
-                  onPress={() => onSelectArticle(item.id)}
-                  style={({ pressed }) => [
-                    {
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingHorizontal: theme.spacing.lg,
-                      paddingVertical: theme.spacing.md,
-                      backgroundColor: isSelected
-                        ? theme.colors.surfaceSelected
-                        : pressed
-                          ? theme.colors.surfaceHover
-                          : theme.colors.surface,
-                    },
-                  ]}
+              <DSTableRow
+                key={item.id}
+                selected={isActiveDrawerRow || isChecked}
+                isLast={idx === filteredArticles.length - 1}
+                onPress={() => onSelectArticle(item.id)}
+              >
+                <InboxCheckbox
+                  checked={isChecked}
+                  accessibilityLabel={`Select ${item.ai_headline}`}
+                  onPress={() => toggleRow(item.id)}
+                />
+
+                <View className="w-24 md:w-32 shrink-0">
+                  <DSText
+                    variant="caption"
+                    weight="semibold"
+                    tone="secondary"
+                    numberOfLines={1}
+                  >
+                    {getSourceLabel(item)}
+                  </DSText>
+                </View>
+
+                <View
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    paddingRight: theme.spacing.sm,
+                    gap: theme.spacing.xxs,
+                  }}
                 >
-                  {/* Status dot */}
-                  <View
-                    style={{
-                      width: theme.spacing.sm,
-                      height: theme.spacing.sm,
-                      borderRadius: theme.radii.pill,
-                      marginRight: theme.spacing.md,
-                      backgroundColor: theme.colors.tones[rowTone].dot,
-                    }}
-                  />
-
-                  {/* Left column: Topic / Source */}
-                  <View
-                    style={{ paddingRight: theme.spacing.md }}
-                    className="w-24 md:w-32 shrink-0"
+                  <DSText
+                    variant="body"
+                    weight="semibold"
+                    tone="primary"
+                    numberOfLines={1}
                   >
-                    <DSText
-                      variant="caption"
-                      weight="semibold"
-                      tone="secondary"
-                      numberOfLines={1}
-                    >
-                      {getSourceLabel(item)}
-                    </DSText>
-                  </View>
-
-                  {/* Center: Headline + One Plain Reason underneath (Fix 3) */}
-                  <View
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      paddingRight: theme.spacing.md,
-                      gap: 2,
-                    }}
+                    {item.ai_headline}
+                  </DSText>
+                  <DSText
+                    variant="caption"
+                    tone="tertiary"
+                    numberOfLines={1}
                   >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        theme.typography.body,
-                        {
-                          fontFamily: theme.fontFamilies.sans,
-                          color: theme.colors.textPrimary,
-                          fontWeight: '600',
-                        },
-                      ]}
-                    >
-                      {item.ai_headline}
-                    </Text>
-                    <DSText
-                      variant="caption"
-                      tone="secondary"
-                      numberOfLines={1}
-                    >
-                      {plainReason}
-                    </DSText>
-                  </View>
+                    {plainReason}
+                  </DSText>
+                </View>
 
-                  {/* Right: Unified Three-State Badge + Unpublish button when published (Fix 2 & Fix 15) */}
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: theme.spacing.sm,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {item.sensitive ? (
-                      <DSBadge label="Sensitive" tone="neutral" />
-                    ) : null}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: theme.spacing.sm,
+                    flexShrink: 0,
+                  }}
+                >
+                  {item.sensitive ? (
+                    <DSBadge label="Sensitive" tone="neutral" />
+                  ) : null}
 
-                    <DSBadge label={stateLabel} tone={rowTone} dot />
+                  <DSBadge label={stateLabel} tone={rowTone} />
 
-                    {item.status === 'published' && onUnpublish ? (
-                      <DSButton
-                        label="Unpublish"
-                        variant="secondary"
-                        size="sm"
-                        loading={unpublishingId === item.id}
-                        disabled={unpublishingId !== null}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          void handleQuickUnpublish(item.id);
-                        }}
-                      />
-                    ) : null}
-                  </View>
-                </Pressable>
-                <DSDivider />
-              </View>
+                  {item.status === 'published' && onUnpublish ? (
+                    <DSButton
+                      label="Unpublish"
+                      variant="secondary"
+                      size="sm"
+                      loading={unpublishingId === item.id}
+                      disabled={unpublishingId !== null}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        void handleQuickUnpublish(item.id);
+                      }}
+                    />
+                  ) : null}
+                </View>
+              </DSTableRow>
             );
           })
         )}
       </ScrollView>
 
-      {/* Batch-Approve Confirmation Modal (Ready view only) */}
+      {/* Bulk Action Confirmation Modal */}
       <Modal
-        visible={batchModalOpen}
+        visible={modalAction !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setBatchModalOpen(false)}
+        onRequestClose={() => setModalAction(null)}
       >
         <View
           style={{
@@ -579,65 +798,109 @@ export function ArticleInboxList({
             padding: theme.spacing.xl,
           }}
         >
-          <DSCard
-            headerTitle={`Approve ${readyDraftsInView.length} Ready Stories`}
-            headerSubtitle="Every story below was verified against the full article text and passed all Judge checks."
-            elevated
-            padding="lg"
-            style={{ width: '100%', maxWidth: 520 }}
-          >
-            <ScrollView
-              style={{ maxHeight: 260, marginBottom: theme.spacing.lg }}
+          {modalAction ? (
+            <DSCard
+              headerTitle={
+                modalAction.kind === 'approve'
+                  ? `Approve & Publish ${modalAction.items.length} ${modalAction.items.length === 1 ? 'Story' : 'Stories'}`
+                  : modalAction.kind === 'reject'
+                    ? `Reject ${modalAction.items.length} ${modalAction.items.length === 1 ? 'Story' : 'Stories'}`
+                    : `Unpublish ${modalAction.items.length} ${modalAction.items.length === 1 ? 'Story' : 'Stories'}`
+              }
+              headerSubtitle={
+                modalAction.kind === 'approve'
+                  ? 'Selected stories will go live in the reader feed immediately.'
+                  : modalAction.kind === 'reject'
+                    ? 'Selected stories will be moved out of the live feed and review queue.'
+                    : 'Selected stories will return to In Review as drafts.'
+              }
+              elevated
+              padding="lg"
+              style={{ width: '100%', maxWidth: 540 }}
             >
-              <View style={{ gap: theme.spacing.sm }}>
-                {readyDraftsInView.map((a) => (
-                  <View
-                    key={a.id}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <DSText
-                      variant="caption"
-                      weight="medium"
-                      tone="primary"
-                      numberOfLines={1}
-                      style={{ flex: 1 }}
-                    >
-                      • {a.ai_headline}
-                    </DSText>
-                    <DSBadge label="Ready to approve" tone="success" />
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+              {nonReadyApproveCount > 0 ? (
+                <DSSurface
+                  radius="sm"
+                  bordered
+                  style={{
+                    backgroundColor: theme.colors.tones.warning.bg,
+                    borderColor: theme.colors.tones.warning.border,
+                    padding: theme.spacing.md,
+                    marginBottom: theme.spacing.md,
+                  }}
+                >
+                  <DSText variant="caption" weight="semibold" tone="warning">
+                    {nonReadyApproveCount}{' '}
+                    {nonReadyApproveCount === 1
+                      ? 'selected story has'
+                      : 'selected stories have'}{' '}
+                    verification checks or flags. Confirm you want to publish them.
+                  </DSText>
+                </DSSurface>
+              ) : null}
 
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'flex-end',
-                gap: theme.spacing.sm,
-              }}
-            >
-              <DSButton
-                label="Cancel"
-                variant="secondary"
-                size="md"
-                disabled={batchBusy}
-                onPress={() => setBatchModalOpen(false)}
-              />
-              <DSButton
-                label={`Confirm & Publish (${readyDraftsInView.length})`}
-                variant="primary"
-                size="md"
-                loading={batchBusy}
-                onPress={handleConfirmBatch}
-              />
-            </View>
-          </DSCard>
+              <ScrollView
+                style={{ maxHeight: 260, marginBottom: theme.spacing.lg }}
+              >
+                <View style={{ gap: theme.spacing.sm }}>
+                  {modalAction.items.map((a) => (
+                    <View
+                      key={a.id}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: theme.spacing.sm,
+                      }}
+                    >
+                      <DSText
+                        variant="caption"
+                        weight="medium"
+                        tone="primary"
+                        numberOfLines={1}
+                        style={{ flex: 1 }}
+                      >
+                        • {a.ai_headline}
+                      </DSText>
+                      <DSBadge
+                        label={getRowStateLabel(a)}
+                        tone={getRowTone(a)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'flex-end',
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <DSButton
+                  label="Cancel"
+                  variant="secondary"
+                  size="md"
+                  disabled={batchBusy}
+                  onPress={() => setModalAction(null)}
+                />
+                <DSButton
+                  label={
+                    modalAction.kind === 'approve'
+                      ? `Confirm & Publish (${modalAction.items.length})`
+                      : modalAction.kind === 'reject'
+                        ? `Confirm Reject (${modalAction.items.length})`
+                        : `Confirm Unpublish (${modalAction.items.length})`
+                  }
+                  variant={modalAction.kind === 'reject' ? 'danger' : 'primary'}
+                  size="md"
+                  loading={batchBusy}
+                  onPress={handleConfirmBulkAction}
+                />
+              </View>
+            </DSCard>
+          ) : null}
         </View>
       </Modal>
     </View>

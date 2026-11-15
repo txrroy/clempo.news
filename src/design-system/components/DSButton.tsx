@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   type PressableProps,
   type ViewStyle,
@@ -9,6 +10,7 @@ import { DSText, type DSTextTone } from './DSText';
 
 export type DSButtonVariant =
   | 'primary'
+  | 'charcoal'
   | 'accent'
   | 'secondary'
   | 'tinted'
@@ -46,54 +48,61 @@ export function DSButton({
   > = {
     sm: { px: theme.spacing.md, py: theme.spacing.xs + 2, textVariant: 'caption' },
     md: { px: theme.spacing.lg, py: theme.spacing.sm + 2, textVariant: 'footnote' },
-    lg: { px: theme.spacing.xl, py: theme.spacing.md, textVariant: 'subhead' as 'body' },
+    lg: { px: theme.spacing.xl, py: theme.spacing.md, textVariant: 'body' },
+  };
+
+  const orangePrimary = {
+    bg: theme.colors.accent,
+    border: theme.colors.accent,
+    textTone: 'inverse' as DSTextTone,
+    spinnerColor: theme.colors.textInverse,
+  };
+
+  const charcoalPrimary = {
+    bg: theme.colors.surfaceInk,
+    border: theme.colors.surfaceInk,
+    textTone: 'inverse' as DSTextTone,
+    spinnerColor: theme.colors.textInverse,
+  };
+
+  const secondaryStyle = {
+    bg: theme.colors.surface,
+    border: theme.colors.borderDefault,
+    textTone: 'primary' as DSTextTone,
+    spinnerColor: theme.colors.textPrimary,
   };
 
   const variantStyles: Record<
     DSButtonVariant,
     { bg: string; border: string; textTone: DSTextTone; spinnerColor: string }
   > = {
-    primary: {
-      bg: theme.colors.textPrimary,
-      border: theme.colors.textPrimary,
-      textTone: 'inverse',
-      spinnerColor: theme.colors.textInverse,
+    primary: orangePrimary,
+    accent: orangePrimary,
+    charcoal: charcoalPrimary,
+    success: {
+      bg: theme.colors.tones.success.bg,
+      border: theme.colors.tones.success.border,
+      textTone: 'success',
+      spinnerColor: theme.colors.tones.success.text,
     },
-    accent: {
-      bg: theme.colors.accent,
-      border: theme.colors.accent,
-      textTone: 'ink',
-      spinnerColor: theme.colors.inkText,
-    },
-    secondary: {
-      bg: theme.colors.surface,
-      border: theme.colors.borderDefault,
-      textTone: 'primary',
-      spinnerColor: theme.colors.textPrimary,
-    },
+    secondary: secondaryStyle,
     tinted: {
       bg: theme.colors.accentSoft,
       border: theme.colors.accentBorder,
       textTone: 'accent',
-      spinnerColor: theme.colors.accent,
+      spinnerColor: theme.colors.accentText,
     },
     ghost: {
       bg: 'transparent',
       border: 'transparent',
-      textTone: 'secondary',
-      spinnerColor: theme.colors.textSecondary,
+      textTone: 'primary',
+      spinnerColor: theme.colors.textPrimary,
     },
     danger: {
       bg: theme.colors.tones.danger.bg,
       border: theme.colors.tones.danger.border,
       textTone: 'danger',
       spinnerColor: theme.colors.tones.danger.text,
-    },
-    success: {
-      bg: theme.colors.tones.success.dot,
-      border: theme.colors.tones.success.dot,
-      textTone: 'ink',
-      spinnerColor: theme.colors.inkText,
     },
   };
 
@@ -103,27 +112,53 @@ export function DSButton({
   return (
     <Pressable
       disabled={isDisabled}
-      style={({ pressed }) => [
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: s.px,
-          paddingVertical: s.py,
-          borderRadius: pill ? theme.radii.pill : theme.radii.sm,
-          backgroundColor: v.bg,
-          borderWidth: theme.layout.borderWidth,
-          borderColor: v.border,
-          opacity: isDisabled ? 0.42 : pressed ? 0.8 : 1,
-        },
-        style,
-      ]}
+      accessibilityRole="button"
+      style={(state) => {
+        const { pressed } = state;
+        const hovered = (state as { hovered?: boolean }).hovered;
+        const focused = (state as { focused?: boolean }).focused;
+        return [
+          {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: s.px,
+            paddingVertical: s.py,
+            borderRadius: pill ? theme.radii.pill : theme.radii.sm,
+            backgroundColor: isDisabled ? theme.colors.disabledBg : v.bg,
+            borderWidth: theme.layout.borderWidth,
+            borderColor: isDisabled
+              ? theme.colors.disabledBg
+              : focused
+                ? theme.colors.accent
+                : v.border,
+            opacity: isDisabled ? 0.85 : pressed ? 0.86 : hovered ? 0.94 : 1,
+            ...(Platform.OS === 'web'
+              ? ({
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  outlineWidth: focused ? 2 : 0,
+                  outlineColor: theme.colors.accentSoft,
+                  outlineStyle: 'solid',
+                } as Record<string, unknown>)
+              : {}),
+          },
+          style,
+        ];
+      }}
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={v.spinnerColor} />
+        <ActivityIndicator
+          size="small"
+          color={isDisabled ? theme.colors.disabledText : v.spinnerColor}
+        />
       ) : (
-        <DSText variant={s.textVariant} weight="semibold" tone={v.textTone}>
+        <DSText
+          variant={s.textVariant}
+          weight="semibold"
+          tone={isDisabled ? 'tertiary' : v.textTone}
+          style={isDisabled ? { color: theme.colors.disabledText } : undefined}
+        >
           {label}
         </DSText>
       )}

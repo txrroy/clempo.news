@@ -617,6 +617,7 @@ async function runBackfill() {
         alternate_urls: fetchedArticle.alternate_urls,
         topic: fetchedArticle.topic,
         region: fetchedArticle.region,
+        tags: fetchedArticle.tags,
         sensitive: fetchedArticle.sensitive,
         selection_reason: fetchedArticle.reason,
         used_fallback_snippet: fetchedArticle.usedFallbackSnippet,

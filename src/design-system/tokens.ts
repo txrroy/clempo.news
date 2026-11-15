@@ -12,54 +12,53 @@ export const spacing = {
 } as const;
 
 export const radii = {
-  xs: 6,
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 26,
+  xs: 4,
+  sm: 6,
+  md: 10,
+  lg: 12,
+  xl: 20,
   pill: 9999,
 } as const;
 
 export const typography = {
-  micro: { fontSize: 10.5, lineHeight: 14, letterSpacing: 0.6 },
-  caption: { fontSize: 12, lineHeight: 16, letterSpacing: 0.1 },
+  micro: { fontSize: 11, lineHeight: 15, letterSpacing: 0.2 },
+  caption: { fontSize: 12, lineHeight: 16, letterSpacing: 0 },
   footnote: { fontSize: 13, lineHeight: 18, letterSpacing: 0 },
-  body: { fontSize: 14.5, lineHeight: 21, letterSpacing: -0.1 },
-  subhead: { fontSize: 15.5, lineHeight: 22, letterSpacing: -0.15 },
-  headline: { fontSize: 17, lineHeight: 23, letterSpacing: -0.25 },
-  title3: { fontSize: 20, lineHeight: 26, letterSpacing: -0.4 },
-  title2: { fontSize: 24, lineHeight: 30, letterSpacing: -0.55 },
-  metric: { fontSize: 30, lineHeight: 34, letterSpacing: -0.8 },
-  display: { fontSize: 38, lineHeight: 42, letterSpacing: -1.1 },
+  body: { fontSize: 14, lineHeight: 21, letterSpacing: -0.05 },
+  subhead: { fontSize: 14, lineHeight: 20, letterSpacing: -0.05 },
+  headline: { fontSize: 16, lineHeight: 22, letterSpacing: -0.15 },
+  title3: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },
+  title2: { fontSize: 24, lineHeight: 30, letterSpacing: -0.4 },
+  metric: { fontSize: 28, lineHeight: 34, letterSpacing: -0.5 },
+  display: { fontSize: 32, lineHeight: 38, letterSpacing: -0.6 },
 } as const;
 
 export const fontFamilies = {
   sans: Platform.select({
-    ios: 'Cabinet Grotesk',
-    web: "'Cabinet Grotesk', 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
-    default: 'Cabinet Grotesk',
+    ios: 'Inter',
+    web: "'Inter', 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+    default: 'sans-serif',
   }),
   serif: Platform.select({
-    ios: 'Cabinet Grotesk',
-    web: "'Cabinet Grotesk', 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
-    default: 'Cabinet Grotesk',
+    ios: 'Inter',
+    web: "'Inter', 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+    default: 'sans-serif',
   }),
   mono: Platform.select({
-    ios: 'Cabinet Grotesk',
-    web: "'Cabinet Grotesk', 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
-    default: 'Cabinet Grotesk',
+    ios: 'Menlo',
+    web: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    default: 'monospace',
   }),
 } as const;
 
 export const layout = {
-  topBarHeight: 54,
-  sidebarWidth: 236,
-  drawerMaxWidth: 900,
-  contentMaxWidth: 960,
+  topBarHeight: 56,
+  sidebarWidth: 248,
+  drawerMaxWidth: 9999,
+  contentMaxWidth: 9999,
   borderWidth: 1,
 } as const;
 
 export type DSSpacingKey = keyof typeof spacing;
 export type DSRadiiKey = keyof typeof radii;
 export type DSTypographyKey = keyof typeof typography;
-

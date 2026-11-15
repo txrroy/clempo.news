@@ -7,4 +7,6 @@ export * from './components/DSButton';
 export * from './components/DSBadge';
 export * from './components/DSSegmentedControl';
 export * from './components/DSInput';
+export * from './components/DSLayout';
+export * from './components/DSTable';
 

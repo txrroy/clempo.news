@@ -1,27 +1,27 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  View,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
-  Linking,
-  Animated,
   useWindowDimensions,
+  View,
 } from 'react-native';
 import {
-  useDSTheme,
-  DSCard,
-  DSText,
   DSBadge,
-  DSChip,
   DSButton,
+  DSChip,
+  DSDivider,
   DSInput,
   DSSurface,
+  DSText,
+  useDSTheme,
   type DSTone,
 } from '@/design-system';
 import {
   acceptRegeneratedDraft,
-  regenerateDraftRequest,
   LOCKED_CORE_SUMMARY,
+  regenerateDraftRequest,
   type RegenerateResponse,
 } from '@/hooks/useGovernance';
 import {
@@ -33,16 +33,18 @@ import {
   isSnippetOnlyUnverified,
 } from '@/lib/editorialLabels';
 import type { Article, ArticleFlag, ReadingLevel } from '@/types/article';
+import { BottomDrawer } from './BottomDrawer';
 
-interface ArticleReaderDrawerProps {
-  article: Article | null;
+export interface ArticleReaderPaneProps {
+  article: Article;
   adminUid: string;
-  hasPrev: boolean;
-  hasNext: boolean;
   getIdToken: () => Promise<string>;
-  onPrev: () => void;
-  onNext: () => void;
-  onClose: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
+  onClose?: () => void;
+  closeLabel?: string;
   onSaveChanges: (id: string, headline: string, summary: string) => Promise<void>;
   onApprove: (
     id: string,
@@ -54,6 +56,12 @@ interface ArticleReaderDrawerProps {
   onUnpublish?: (id: string) => Promise<void>;
   onConfirmKidsTopic?: (id: string, confirmed: boolean) => Promise<void>;
   onConfirmSourceChecked?: (id: string, checked: boolean) => Promise<void>;
+}
+
+export interface ArticleReaderDrawerProps
+  extends Omit<ArticleReaderPaneProps, 'article'> {
+  article: Article | null;
+  onClose: () => void;
 }
 
 const READING_LEVELS: ReadingLevel[] = [
@@ -86,29 +94,261 @@ function getScoreTone(score: number): 'success' | 'warning' | 'danger' {
   return 'danger';
 }
 
-type TraceCollapseKey = 'fetcher' | 'summarizer' | 'judge';
+type JudgeDimensionKey = 'accuracy' | 'neutrality' | 'safety' | 'readability';
 
-export function ArticleReaderDrawer({
+interface JudgeCheckItem {
+  key: JudgeDimensionKey;
+  label: string;
+  displayValue: string;
+  tone: DSTone;
+  reason: string | null;
+  needsAttention: boolean;
+}
+
+interface ParsedJudgeReasoning {
+  byDimension: Partial<Record<JudgeDimensionKey, string>>;
+  generalNotes: string[];
+}
+
+function splitSentences(text: string): string[] {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return [];
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < cleaned.length - 2; i++) {
+    const ch = cleaned[i];
+    if ((ch === '.' || ch === '!' || ch === '?') && cleaned[i + 1] === ' ') {
+      const prevTwo = cleaned.slice(Math.max(0, i - 2), i + 1);
+      const nextChar = cleaned[i + 2];
+      if (!/^[A-Z]\.[A-Z]\.$/.test(prevTwo) && /[A-Z"'(]/.test(nextChar)) {
+        const part = cleaned.slice(start, i + 1).trim();
+        if (part) sentences.push(part);
+        start = i + 2;
+      }
+    }
+  }
+  const tail = cleaned.slice(start).trim();
+  if (tail) sentences.push(tail);
+  return sentences;
+}
+
+/**
+ * Splits Judge `confidence_reasoning` into per-dimension rubric explanations
+ * plus any remaining unmapped sentences so the UI renders scannable rows.
+ */
+function parseJudgeReasoning(reasoning: string): ParsedJudgeReasoning {
+  const normalized = reasoning.replace(/\s+/g, ' ').trim();
+  if (!normalized) return { byDimension: {}, generalNotes: [] };
+
+  const anchorRe =
+    /(?:^|[.!?]\s+)(Accuracy|Neutrality|Safety(?:\s*\(G\))?|Readability)\b(?=\s*(?:score\b|is\b|was\b|remains\b|:|-|–|\(|\d|checks?\b|passed\b|rating\b))/gi;
+
+  const anchors: { dimIndex: number; key: JudgeDimensionKey }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = anchorRe.exec(normalized)) !== null) {
+    const prefixLen = match[0].length - match[1].length;
+    const rawDim = match[1].toLowerCase();
+    const key: JudgeDimensionKey = rawDim.startsWith('safety')
+      ? 'safety'
+      : (rawDim as JudgeDimensionKey);
+    anchors.push({ dimIndex: match.index + prefixLen, key });
+  }
+
+  if (anchors.length === 0) {
+    return { byDimension: {}, generalNotes: splitSentences(normalized) };
+  }
+
+  const byDimension: Partial<Record<JudgeDimensionKey, string>> = {};
+  const generalNotes: string[] = [];
+
+  if (anchors[0].dimIndex > 0) {
+    generalNotes.push(...splitSentences(normalized.slice(0, anchors[0].dimIndex)));
+  }
+
+  for (let i = 0; i < anchors.length; i++) {
+    const start = anchors[i].dimIndex;
+    const end = i + 1 < anchors.length ? anchors[i + 1].dimIndex : normalized.length;
+    const segment = normalized.slice(start, end).trim();
+
+    let detail = segment
+      .replace(
+        /^(?:Accuracy|Neutrality|Safety(?:\s*\(G\))?|Readability)(?:\s*\(G\))?(?:\s+score)?(?:\s*\(\s*\d+(?:\s*\/\s*100)?\s*\))?(?:\s*(?:is|was|remains|:|-|–)\s*\d+(?:\s*\/\s*100)?)?(?:\s*(?:because|since|as|with|given|where|—|-|:|,)\s*)?/i,
+        ''
+      )
+      .trim();
+
+    if (/^[.,;:!?-]*$/.test(detail)) {
+      detail = '';
+    } else if (detail.length > 0) {
+      detail = detail.charAt(0).toUpperCase() + detail.slice(1);
+    }
+
+    if (detail) {
+      const key = anchors[i].key;
+      byDimension[key] = byDimension[key]
+        ? `${byDimension[key]} ${detail}`
+        : detail;
+    }
+  }
+
+  return { byDimension, generalNotes };
+}
+
+interface JudgeBreakdownProps {
+  judgeChecks: JudgeCheckItem[];
+  extraNotes: string[];
+  hasPerDimensionReasons: boolean;
+  snippetUnverified: boolean;
+  badgeRowTitle?: string;
+  fallbackText?: string;
+}
+
+/**
+ * Renders scannable Judge rubric rows (badge + concise reason) or a compact
+ * score badge strip when no per-dimension explanation is present.
+ */
+function JudgeBreakdown({
+  judgeChecks,
+  extraNotes,
+  hasPerDimensionReasons,
+  snippetUnverified,
+  badgeRowTitle,
+  fallbackText,
+}: JudgeBreakdownProps) {
+  const { theme } = useDSTheme();
+
+  return (
+    <View style={{ gap: theme.spacing.sm }}>
+      {extraNotes.length > 0 ? (
+        <View style={{ gap: theme.spacing.xxs }}>
+          {extraNotes.map((note, idx) => (
+            <DSText
+              key={`${idx}-${note.slice(0, 16)}`}
+              variant="caption"
+              tone="primary"
+            >
+              • {note}
+            </DSText>
+          ))}
+        </View>
+      ) : null}
+
+      {hasPerDimensionReasons ? (
+        <View style={{ gap: theme.spacing.sm }}>
+          {judgeChecks.map((check) => (
+            <View
+              key={check.key}
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'flex-start',
+                columnGap: theme.spacing.sm,
+                rowGap: theme.spacing.xs,
+              }}
+            >
+              <View style={{ alignItems: 'flex-start' }}>
+                <DSBadge
+                  label={`${check.label} · ${check.displayValue}`}
+                  tone={check.tone}
+                  bordered={check.needsAttention}
+                />
+              </View>
+              <DSText
+                variant="caption"
+                tone={check.needsAttention ? 'primary' : 'secondary'}
+                style={{
+                  flex: 1,
+                  minWidth: 200,
+                  lineHeight: 19,
+                  paddingTop: 2,
+                }}
+              >
+                {check.reason ??
+                  (check.key === 'accuracy' && snippetUnverified
+                    ? 'Could not verify against full source text.'
+                    : 'Passed check.')}
+              </DSText>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={{ gap: theme.spacing.xs }}>
+          {extraNotes.length === 0 && fallbackText ? (
+            <DSText variant="caption" tone="secondary">
+              {fallbackText}
+            </DSText>
+          ) : null}
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+            }}
+          >
+            {badgeRowTitle ? (
+              <DSText variant="caption" weight="semibold" tone="secondary">
+                {badgeRowTitle}
+              </DSText>
+            ) : null}
+            {judgeChecks.map((check) => (
+              <DSBadge
+                key={check.key}
+                label={`${check.label} · ${check.displayValue}`}
+                tone={check.tone}
+                bordered={check.needsAttention}
+              />
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function ArticleReaderDrawer(props: ArticleReaderDrawerProps) {
+  return (
+    <BottomDrawer
+      visible={Boolean(props.article)}
+      onClose={props.onClose}
+      storageKey="snappylit_admin_reader_drawer_height_ratio_v1"
+      accessibilityLabel="Close article drawer"
+    >
+      {props.article ? (
+        <ArticleReaderPane
+          key={props.article.id}
+          {...props}
+          article={props.article}
+        />
+      ) : null}
+    </BottomDrawer>
+  );
+}
+
+/**
+ * Reusable article editorial review, split summary/source reader, and Agent trace
+ * workspace that can render either inside `BottomDrawer` or docked in a split panel.
+ */
+export function ArticleReaderPane({
   article,
   adminUid,
-  hasPrev,
-  hasNext,
+  hasPrev = false,
+  hasNext = false,
   getIdToken,
   onPrev,
   onNext,
   onClose,
+  closeLabel = '← Back',
   onSaveChanges,
   onApprove,
   onReject,
   onUnpublish,
   onConfirmSourceChecked,
-}: ArticleReaderDrawerProps) {
+}: ArticleReaderPaneProps) {
   const { theme } = useDSTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const slideAnim = useRef(new Animated.Value(windowWidth)).current;
 
-  const [headline, setHeadline] = useState('');
-  const [summary, setSummary] = useState('');
+  const [headline, setHeadline] = useState(article.ai_headline);
+  const [summary, setSummary] = useState(article.ai_summary);
   const [editingDraftText, setEditingDraftText] = useState(false);
   const [busyAction, setBusyAction] = useState<
     | 'save'
@@ -122,71 +362,32 @@ export function ArticleReaderDrawer({
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [showCustomSteer, setShowCustomSteer] = useState(false);
-  const [regenLevel, setRegenLevel] = useState<ReadingLevel>('grade 6');
-  const [regenWords, setRegenWords] = useState<number>(60);
+  const [regenLevel, setRegenLevel] = useState<ReadingLevel>(
+    (article.instructions_snapshot?.reading_level as ReadingLevel) || 'grade 6'
+  );
+  const [regenWords, setRegenWords] = useState<number>(
+    article.instructions_snapshot?.target_summary_words || 60
+  );
   const [regenRedirect, setRegenRedirect] = useState('');
   const [regenPreview, setRegenPreview] = useState<RegenerateResponse | null>(
     null
   );
 
-  // Split-screen inline sentence grounding selection
+  const { width: windowWidth } = useWindowDimensions();
+  const [containerWidth, setContainerWidth] = useState(0);
+  const effectiveWidth = containerWidth > 0 ? containerWidth : windowWidth;
+  const isWideSplit = effectiveWidth >= 900;
+  const tracePanelWidth = effectiveWidth >= 1220 ? 360 : 300;
+
   const [selectedSentenceIdx, setSelectedSentenceIdx] = useState<number | null>(
     0
   );
-
-  // Fix 11: Pre-flight source check for "Could not verify" stories
-  const [localSourceChecked, setLocalSourceChecked] = useState(false);
-
-  // Fix 7: Three collapsed story trace steps (Fetcher, Summarizer, Judge)
-  const [openTraceSteps, setOpenTraceSteps] = useState<
-    Record<TraceCollapseKey, boolean>
-  >({
-    fetcher: false,
-    summarizer: false,
-    judge: false,
-  });
-
-  useEffect(() => {
-    setHeadline(article?.ai_headline ?? '');
-    setSummary(article?.ai_summary ?? '');
-    setEditingDraftText(false);
-    setFeedback(null);
-    setBusyAction(null);
-    setRegenPreview(null);
-    setRegenRedirect('');
-    setShowCustomSteer(false);
-    setSelectedSentenceIdx(0);
-    setLocalSourceChecked(Boolean(article?.source_checked));
-    setOpenTraceSteps({ fetcher: false, summarizer: false, judge: false });
-    if (article?.instructions_snapshot) {
-      setRegenLevel(
-        (article.instructions_snapshot.reading_level as ReadingLevel) ||
-          'grade 6'
-      );
-      setRegenWords(article.instructions_snapshot.target_summary_words || 60);
-    }
-  }, [
-    article?.id,
-    article?.ai_headline,
-    article?.ai_summary,
-    article?.instructions_snapshot,
-    article?.source_checked,
-  ]);
-
-  useEffect(() => {
-    if (article) {
-      slideAnim.setValue(Math.min(windowWidth, theme.layout.drawerMaxWidth));
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [article, slideAnim, theme.layout.drawerMaxWidth, windowWidth]);
+  const [localSourceChecked, setLocalSourceChecked] = useState(
+    Boolean(article.source_checked)
+  );
 
   // Split summary into sentences and pair each sentence with its closest Judge claim
   const sentenceMappings = useMemo(() => {
-    if (!article) return [];
     const sentences = summary
       .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
@@ -224,16 +425,14 @@ export function ArticleReaderDrawer({
       return {
         idx,
         sentence,
-        claim: bestClaim?.claim ?? sentence,
         evidenceQuote,
         status,
       };
     });
   }, [article, summary]);
 
-  // Split source text into sentences/paragraphs and highlight whichever matches the active summary sentence
+  // Split source text into sentences and highlight whichever matches the selected draft sentence
   const sourceSegments = useMemo(() => {
-    if (!article) return [];
     const rawSource = (article.source_text || '').trim();
     if (!rawSource) return [];
 
@@ -283,8 +482,6 @@ export function ArticleReaderDrawer({
     return segments;
   }, [article, selectedSentenceIdx, sentenceMappings]);
 
-  if (!article) return null;
-
   const isDirty =
     headline.trim() !== article.ai_headline.trim() ||
     summary.trim() !== article.ai_summary.trim();
@@ -294,6 +491,96 @@ export function ArticleReaderDrawer({
   const snippetUnverified = isSnippetOnlyUnverified(article);
   const requiresPreFlightCheck = editorialState === 'Could not verify';
   const canApproveNow = !requiresPreFlightCheck || localSourceChecked;
+
+  const snapshot = article.instructions_snapshot;
+  const traceSteps = article.pipeline_trace ?? [];
+  const statusBadge = getStatusBadgeProps(article);
+  const flags = article.flags ?? [];
+
+  const fetcherStep = traceSteps.find(
+    (s) => s.step === 'fetch' || s.step === 'select' || s.step === 'extract'
+  );
+  const summarizerStep = traceSteps.find((s) => s.step === 'summarize');
+  const judgeStep = traceSteps.find((s) => s.step === 'judge');
+
+  const activeMapping =
+    selectedSentenceIdx !== null ? sentenceMappings[selectedSentenceIdx] : null;
+
+  const accuracyScore = article.scores?.accuracy ?? article.confidence_score;
+  const neutralityScore =
+    article.scores?.neutrality ?? article.confidence_score;
+  const safetyScore = article.scores?.safety ?? article.confidence_score;
+  const readabilityScore =
+    article.scores?.readability ?? article.confidence_score;
+
+  const rawConfidenceReasoning = (article.confidence_reasoning ?? '').trim();
+  const parsedJudge = useMemo(
+    () => parseJudgeReasoning(rawConfidenceReasoning),
+    [rawConfidenceReasoning]
+  );
+  const judgeChecks = useMemo<JudgeCheckItem[]>(() => {
+    const items: JudgeCheckItem[] = [
+      {
+        key: 'accuracy',
+        label: 'Accuracy',
+        displayValue: snippetUnverified ? 'Not verified' : String(accuracyScore),
+        tone: snippetUnverified ? 'danger' : getScoreTone(accuracyScore),
+        reason: parsedJudge.byDimension.accuracy ?? null,
+        needsAttention: snippetUnverified || accuracyScore < 100,
+      },
+      {
+        key: 'neutrality',
+        label: 'Neutrality',
+        displayValue: String(neutralityScore),
+        tone: getScoreTone(neutralityScore),
+        reason: parsedJudge.byDimension.neutrality ?? null,
+        needsAttention: neutralityScore < 100,
+      },
+      {
+        key: 'safety',
+        label: 'Safety (G)',
+        displayValue: String(safetyScore),
+        tone: getScoreTone(safetyScore),
+        reason: parsedJudge.byDimension.safety ?? null,
+        needsAttention: safetyScore < 100,
+      },
+      {
+        key: 'readability',
+        label: 'Readability',
+        displayValue: String(readabilityScore),
+        tone: getScoreTone(readabilityScore),
+        reason: parsedJudge.byDimension.readability ?? null,
+        needsAttention: readabilityScore < 100,
+      },
+    ];
+    return [...items].sort(
+      (a, b) => Number(b.needsAttention) - Number(a.needsAttention)
+    );
+  }, [
+    accuracyScore,
+    neutralityScore,
+    safetyScore,
+    readabilityScore,
+    snippetUnverified,
+    parsedJudge,
+  ]);
+  const primaryIsRawReasoning =
+    rawConfidenceReasoning.length > 0 &&
+    whyNeedsYou.sentence.trim() === rawConfidenceReasoning;
+  const extraJudgeNotes = parsedJudge.generalNotes.filter(
+    (note) => note !== whyNeedsYou.sentence.trim()
+  );
+  const hasPerDimensionReasons = judgeChecks.some((c) => Boolean(c.reason));
+  const flaggedTriageReasons = judgeChecks
+    .filter((c) => c.needsAttention && c.reason)
+    .map((c) => c.reason!);
+  const triageNotes = !primaryIsRawReasoning
+    ? [whyNeedsYou.sentence]
+    : flaggedTriageReasons.length > 0
+      ? flaggedTriageReasons
+      : extraJudgeNotes.length > 0
+        ? extraJudgeNotes
+        : ['Flagged for a quick editorial check.'];
 
   const handleToggleSourceCheck = async () => {
     const next = !localSourceChecked;
@@ -421,66 +708,137 @@ export function ArticleReaderDrawer({
     }
   };
 
-  const snapshot = article.instructions_snapshot;
-  const traceSteps = article.pipeline_trace ?? [];
-  const statusBadge = getStatusBadgeProps(article);
-  const flags = article.flags ?? [];
+  const agentTraceSection = (
+    <View style={{ gap: theme.spacing.sm }}>
+      <DSText variant="headline" weight="semibold" tone="primary">
+        Agent trace
+      </DSText>
 
-  const toggleTraceSection = (key: TraceCollapseKey) => {
-    setOpenTraceSteps((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+      <DSSurface variant="surface" radius="md" bordered>
+        <View
+          style={{
+            padding: theme.spacing.lg,
+            gap: theme.spacing.md,
+          }}
+        >
+          {/* Fetcher */}
+          <View style={{ gap: theme.spacing.xs }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: theme.spacing.sm,
+              }}
+            >
+              <DSText variant="caption" weight="semibold" tone="primary">
+                1. Fetcher · {article.source_count ?? 1} outlet(s)
+                {fetcherStep?.duration_ms ? ` · ${fetcherStep.duration_ms}ms` : ''}
+              </DSText>
+              <DSButton
+                label="Open source ↗"
+                variant="secondary"
+                size="sm"
+                onPress={() => Linking.openURL(article.original_url)}
+              />
+            </View>
+            <DSText variant="caption" tone="secondary">
+              {article.selection_reason ||
+                'Selected for high global impact and multi-outlet coverage.'}{' '}
+              ({(article.source_names ?? []).join(', ') || 'Primary feed'})
+            </DSText>
+          </View>
 
-  const fetcherStep = traceSteps.find(
-    (s) => s.step === 'fetch' || s.step === 'select' || s.step === 'extract'
+          <DSDivider />
+
+          {/* Summarizer */}
+          <View style={{ gap: theme.spacing.xxs }}>
+            <DSText variant="caption" weight="semibold" tone="primary">
+              2. Summarizer · Policy{' '}
+              {snapshot?.prompt_version || article.prompt_version || 'v1'} ·{' '}
+              {snapshot?.reading_level || 'grade 6'} · ~
+              {snapshot?.target_summary_words || 60} words
+              {article.auto_retried_complexity ? ' · Auto-simplified once' : ''}
+            </DSText>
+            <DSText variant="caption" tone="secondary">
+              {summarizerStep?.summary ||
+                `Rewrote story at ${snapshot?.reading_level || 'grade 6'} level in ${snapshot?.tone || 'calm_neutral'} tone.`}
+            </DSText>
+            {snapshot?.admin_instructions ? (
+              <DSText variant="caption" tone="primary">
+                Tier 2 instructions: {snapshot.admin_instructions}
+              </DSText>
+            ) : null}
+            {snapshot?.editor_redirect ? (
+              <DSText variant="caption" tone="accent">
+                Editor redirect: {snapshot.editor_redirect}
+              </DSText>
+            ) : null}
+            <DSText variant="micro" tone="tertiary">
+              {snapshot?.locked_core_summary || LOCKED_CORE_SUMMARY}
+            </DSText>
+          </View>
+
+          <DSDivider />
+
+          {/* Judge */}
+          <View style={{ gap: theme.spacing.xs }}>
+            <DSText variant="caption" weight="semibold" tone="primary">
+              3. Judge · {editorialState} ·{' '}
+              {flags.length > 0 ? flags.map(getFlagShortLabel).join(', ') : 'No flags'}
+            </DSText>
+
+            <JudgeBreakdown
+              judgeChecks={judgeChecks}
+              extraNotes={extraJudgeNotes}
+              hasPerDimensionReasons={hasPerDimensionReasons}
+              snippetUnverified={snippetUnverified}
+              fallbackText={
+                judgeStep?.summary || 'Verified claims and rubric scores.'
+              }
+            />
+
+            {flags.length > 0 ? (
+              <View style={{ gap: theme.spacing.xxs }}>
+                {flags.map((f: ArticleFlag) => (
+                  <DSText key={f} variant="caption" tone="danger">
+                    • {getFlagShortLabel(f)}: {getFlagPlainReason(f)}
+                  </DSText>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </DSSurface>
+    </View>
   );
-  const summarizerStep = traceSteps.find((s) => s.step === 'summarize');
-  const judgeStep = traceSteps.find((s) => s.step === 'judge');
 
   return (
     <View
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 50,
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
+      onLayout={(e) => {
+        const nextWidth = Math.round(e.nativeEvent.layout.width);
+        if (nextWidth > 0 && nextWidth !== containerWidth) {
+          setContainerWidth(nextWidth);
+        }
       }}
+      style={{ flex: 1, minHeight: 0, flexDirection: 'column' }}
     >
-      {/* Backdrop */}
-      <Pressable
-        onPress={onClose}
-        style={{ flex: 1, backgroundColor: theme.colors.backdrop }}
-        accessibilityLabel="Close reading pane"
-      />
-
-      {/* Slide-over Reading Page */}
-      <Animated.View
-        style={[
-          theme.shadows.popover,
-          {
-            transform: [{ translateX: slideAnim }],
-            backgroundColor: theme.colors.canvas,
-            borderLeftWidth: theme.layout.borderWidth,
-            borderLeftColor: theme.colors.borderDefault,
-            height: '100%',
-            maxWidth: 1080,
-            flexDirection: 'column',
-          },
-        ]}
-        className="w-full md:w-[84%] lg:w-[76%]"
+      {/* Top Toolbar & Editorial Action Items */}
+      <View
+        style={{
+          backgroundColor: theme.colors.surface,
+          borderBottomWidth: theme.layout.borderWidth,
+          borderBottomColor: theme.colors.borderDefault,
+          paddingHorizontal: theme.spacing.xxl,
+          paddingVertical: theme.spacing.md,
+          gap: theme.spacing.sm,
+        }}
       >
-        {/* Top Reader Toolbar */}
         <View
           style={{
-            backgroundColor: theme.colors.surface,
-            borderBottomWidth: theme.layout.borderWidth,
-            borderBottomColor: theme.colors.borderSubtle,
-            paddingHorizontal: theme.spacing.xl,
-            paddingVertical: theme.spacing.md,
             flexDirection: 'row',
+            flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: theme.spacing.md,
@@ -494,14 +852,33 @@ export function ArticleReaderDrawer({
               flexWrap: 'wrap',
             }}
           >
-            <DSButton
-              label="← Back"
-              variant="secondary"
-              size="sm"
-              pill
-              onPress={onClose}
-            />
-            <DSBadge label={statusBadge.label} tone={statusBadge.tone} dot />
+            {onClose ? (
+              <DSButton
+                label={closeLabel}
+                variant="secondary"
+                size="sm"
+                onPress={onClose}
+              />
+            ) : null}
+            {onPrev && onNext ? (
+              <>
+                <DSButton
+                  label="‹ Prev"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!hasPrev}
+                  onPress={onPrev}
+                />
+                <DSButton
+                  label="Next ›"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!hasNext}
+                  onPress={onNext}
+                />
+              </>
+            ) : null}
+            <DSBadge label={statusBadge.label} tone={statusBadge.tone} />
             {article.sensitive ? (
               <DSBadge label="Sensitive" tone="neutral" />
             ) : null}
@@ -516,1245 +893,725 @@ export function ArticleReaderDrawer({
           <View
             style={{
               flexDirection: 'row',
+              flexWrap: 'wrap',
               alignItems: 'center',
               gap: theme.spacing.sm,
             }}
           >
             <DSButton
-              label="‹ Prev"
-              variant="secondary"
+              label={article.status === 'rejected' ? 'Rejected' : 'Reject'}
+              variant="danger"
               size="sm"
-              disabled={!hasPrev}
-              onPress={onPrev}
+              loading={busyAction === 'reject'}
+              disabled={busyAction !== null || article.status === 'rejected'}
+              onPress={handleReject}
             />
+
+            {article.status === 'published' && onUnpublish ? (
+              <DSButton
+                label="Unpublish"
+                variant="secondary"
+                size="sm"
+                loading={busyAction === 'unpublish'}
+                disabled={busyAction !== null}
+                onPress={handleUnpublish}
+              />
+            ) : null}
+
+            {isDirty || editingDraftText ? (
+              <DSButton
+                label="Save Changes"
+                variant="secondary"
+                size="sm"
+                loading={busyAction === 'save'}
+                disabled={busyAction !== null}
+                onPress={handleSave}
+              />
+            ) : null}
+
             <DSButton
-              label="Next ›"
-              variant="secondary"
+              label={
+                article.status === 'published'
+                  ? 'Update Published'
+                  : 'Approve & Publish'
+              }
+              variant="primary"
               size="sm"
-              disabled={!hasNext}
-              onPress={onNext}
+              loading={busyAction === 'approve'}
+              disabled={busyAction !== null || !canApproveNow}
+              onPress={handleApprove}
             />
           </View>
         </View>
 
-        {/* Scrollable Content */}
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            padding: theme.spacing.xl,
-            paddingBottom: theme.spacing.xxxl,
-          }}
-        >
-          <View
+        {requiresPreFlightCheck && article.status !== 'published' ? (
+          <Pressable
+            onPress={() => void handleToggleSourceCheck()}
             style={{
-              maxWidth: 980,
-              width: '100%',
-              alignSelf: 'center',
-              gap: theme.spacing.lg,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              paddingTop: theme.spacing.xxs,
             }}
           >
-            {/* FIX 9: "WHY THIS NEEDS YOU" CARD AT THE TOP OF THE DETAIL VIEW */}
-            <DSSurface
-              radius="md"
-              bordered
+            <View
               style={{
-                padding: theme.spacing.lg,
-                gap: theme.spacing.sm,
-                backgroundColor:
-                  whyNeedsYou.state === 'Ready to approve'
-                    ? theme.colors.tones.success.bg
-                    : whyNeedsYou.state === 'Needs a check'
-                      ? theme.colors.tones.warning.bg
-                      : theme.colors.tones.danger.bg,
-                borderColor:
-                  whyNeedsYou.state === 'Ready to approve'
-                    ? theme.colors.tones.success.border
-                    : whyNeedsYou.state === 'Needs a check'
-                      ? theme.colors.tones.warning.border
-                      : theme.colors.tones.danger.border,
+                width: 18,
+                height: 18,
+                borderRadius: theme.radii.xs,
+                borderWidth: 1.5,
+                borderColor: localSourceChecked
+                  ? theme.colors.accent
+                  : theme.colors.tones.danger.text,
+                backgroundColor: localSourceChecked
+                  ? theme.colors.accent
+                  : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: theme.spacing.sm,
-                }}
-              >
-                <DSText
-                  variant="micro"
-                  weight="bold"
-                  tone={getEditorialStateTone(whyNeedsYou.state)}
-                  uppercase
-                >
-                  {whyNeedsYou.headline}
+              {localSourceChecked ? (
+                <DSText variant="micro" weight="bold" tone="inverse">
+                  ✓
                 </DSText>
-                <DSText variant="caption" tone="secondary">
-                  {article.date}
-                  {article.topic ? ` · ${article.topic}` : ''}
-                  {article.region ? ` · ${article.region}` : ''}
-                  {article.source_names?.length
-                    ? ` · ${article.source_names.join(', ')}`
-                    : ''}
-                </DSText>
-              </View>
-
-              <DSText variant="subhead" weight="semibold" tone="primary">
-                “{whyNeedsYou.sentence}”
-              </DSText>
-
-              {/* FIX 10: MATCH EACH ACTION TO ITS FLAG + MERGE REGENERATE INTO THIS SAME CONTROL */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: theme.spacing.sm,
-                  paddingTop: theme.spacing.xs,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: theme.spacing.sm,
-                  }}
-                >
-                  {snippetUnverified ? (
-                    <>
-                      <DSButton
-                        label="Try another source"
-                        variant="primary"
-                        size="sm"
-                        loading={busyAction === 'regen'}
-                        disabled={busyAction !== null}
-                        onPress={() =>
-                          void handleRunAgentAction({
-                            redirectInstructions:
-                              'Re-extract from alternate outlet URL and verify all claims against full text.',
-                            tryAlternateSource: true,
-                          })
-                        }
-                      />
-                      <DSButton
-                        label="Open source ↗"
-                        variant="secondary"
-                        size="sm"
-                        onPress={() => Linking.openURL(article.original_url)}
-                      />
-                    </>
-                  ) : null}
-
-                  {flags.includes('TOO_COMPLEX') ? (
-                    <DSButton
-                      label="Simplify"
-                      variant="primary"
-                      size="sm"
-                      loading={busyAction === 'regen'}
-                      disabled={busyAction !== null}
-                      onPress={() =>
-                        void handleRunAgentAction({
-                          readingLevel: 'grade 5',
-                          redirectInstructions:
-                            'Simplify reading level to Grade 5–6. Replace complex or technical terms with everyday words and shorten long sentences.',
-                        })
-                      }
-                    />
-                  ) : null}
-
-                  {flags.includes('ONE_SIDED') ? (
-                    <DSButton
-                      label="Add the other side"
-                      variant="primary"
-                      size="sm"
-                      loading={busyAction === 'regen'}
-                      disabled={busyAction !== null}
-                      onPress={() =>
-                        void handleRunAgentAction({
-                          redirectInstructions:
-                            'Present each side’s position in one calm, neutral attributed sentence so the summary is balanced.',
-                        })
-                      }
-                    />
-                  ) : null}
-
-                  {flags.includes('LOADED_LANGUAGE') ? (
-                    <DSButton
-                      label="Use neutral wording"
-                      variant="primary"
-                      size="sm"
-                      loading={busyAction === 'regen'}
-                      disabled={busyAction !== null}
-                      onPress={() =>
-                        void handleRunAgentAction({
-                          redirectInstructions:
-                            'Replace any loaded or emotional adjectives with plain, neutral verbs and attributed statements.',
-                        })
-                      }
-                    />
-                  ) : null}
-
-                  {flags.includes('GRAPHIC_DETAIL') ? (
-                    <DSButton
-                      label="Soften for G-rating"
-                      variant="primary"
-                      size="sm"
-                      loading={busyAction === 'regen'}
-                      disabled={busyAction !== null}
-                      onPress={() =>
-                        void handleRunAgentAction({
-                          redirectInstructions:
-                            'Remove all graphic or injury details and state what happened in one plain factual G-rated sentence.',
-                        })
-                      }
-                    />
-                  ) : null}
-
-                  {!snippetUnverified ? (
-                    <DSButton
-                      label="Open source ↗"
-                      variant="secondary"
-                      size="sm"
-                      onPress={() => Linking.openURL(article.original_url)}
-                    />
-                  ) : null}
-                </View>
-
-                <DSButton
-                  label={
-                    showCustomSteer
-                      ? 'Hide custom instructions ▲'
-                      : 'Custom instructions & length ▼'
-                  }
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => setShowCustomSteer((v) => !v)}
-                />
-              </View>
-
-              {/* Merged Custom Steering Controls (Fix 10) */}
-              {showCustomSteer ? (
-                <DSSurface
-                  variant="surface"
-                  radius="sm"
-                  bordered
-                  style={{
-                    padding: theme.spacing.md,
-                    marginTop: theme.spacing.xs,
-                    gap: theme.spacing.md,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: theme.spacing.lg,
-                    }}
-                  >
-                    <View style={{ gap: theme.spacing.xs }}>
-                      <DSText
-                        variant="micro"
-                        weight="bold"
-                        tone="tertiary"
-                        uppercase
-                      >
-                        Reading Level
-                      </DSText>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          flexWrap: 'wrap',
-                          gap: theme.spacing.xs,
-                        }}
-                      >
-                        {READING_LEVELS.map((lvl) => (
-                          <DSChip
-                            key={lvl}
-                            label={lvl}
-                            active={regenLevel === lvl}
-                            onPress={() => setRegenLevel(lvl)}
-                          />
-                        ))}
-                      </View>
-                    </View>
-
-                    <View style={{ gap: theme.spacing.xs }}>
-                      <DSText
-                        variant="micro"
-                        weight="bold"
-                        tone="tertiary"
-                        uppercase
-                      >
-                        Target Length ({regenWords}w)
-                      </DSText>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          flexWrap: 'wrap',
-                          gap: theme.spacing.xs,
-                        }}
-                      >
-                        {WORD_TARGETS.map((w) => (
-                          <DSChip
-                            key={w}
-                            label={`~${w}w`}
-                            active={regenWords === w}
-                            onPress={() => setRegenWords(w)}
-                          />
-                        ))}
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={{ gap: theme.spacing.xs }}>
-                    <DSText
-                      variant="micro"
-                      weight="bold"
-                      tone="tertiary"
-                      uppercase
-                    >
-                      Steering instruction for Summarizer
-                    </DSText>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        gap: theme.spacing.sm,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <DSInput
-                        value={regenRedirect}
-                        onChangeText={setRegenRedirect}
-                        placeholder="e.g., Explain the UN agency role more simply and shorten sentence 2..."
-                        compact
-                        style={{ flex: 1, minWidth: 240 }}
-                      />
-                      <DSButton
-                        label="Rewrite & Re-Judge"
-                        variant="primary"
-                        size="sm"
-                        loading={busyAction === 'regen'}
-                        disabled={busyAction !== null}
-                        onPress={() =>
-                          void handleRunAgentAction({
-                            redirectInstructions: regenRedirect.trim(),
-                          })
-                        }
-                      />
-                    </View>
-                  </View>
-                </DSSurface>
               ) : null}
-
-              {/* Before vs. After Preview when agent action runs */}
-              {regenPreview ? (
-                <DSSurface
-                  variant="surface"
-                  radius="sm"
-                  bordered
-                  style={{
-                    padding: theme.spacing.md,
-                    marginTop: theme.spacing.xs,
-                    borderColor: theme.colors.accentBorder,
-                    gap: theme.spacing.sm,
-                  }}
-                >
-                  <DSText variant="micro" weight="bold" tone="accent" uppercase>
-                    Candidate Rewrite Preview
-                  </DSText>
-                  <DSText variant="subhead" weight="bold" tone="primary">
-                    {regenPreview.after.ai_headline}
-                  </DSText>
-                  <DSText variant="body" tone="primary">
-                    {regenPreview.after.ai_summary}
-                  </DSText>
-                  <DSText variant="caption" tone="secondary">
-                    Judge check: {regenPreview.after.confidence_reasoning}
-                  </DSText>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'flex-end',
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <DSButton
-                      label="Discard"
-                      variant="secondary"
-                      size="sm"
-                      onPress={() => setRegenPreview(null)}
-                    />
-                    <DSButton
-                      label="Accept Rewrite"
-                      variant="primary"
-                      size="sm"
-                      loading={busyAction === 'accept-regen'}
-                      disabled={busyAction !== null}
-                      onPress={handleAcceptRegenerated}
-                    />
-                  </View>
-                </DSSurface>
-              ) : null}
-            </DSSurface>
-
-            {/* FIX 8: SHOW EVIDENCE INLINE IN A SPLIT SCREEN (Draft on Left, Source Text on Right) */}
-            <DSCard
-              headerTitle="Draft vs. Source Evidence (Split View)"
-              headerSubtitle="Click any sentence on the left to highlight its matching quote in the source text on the right"
-              headerRight={
-                <DSButton
-                  label={
-                    editingDraftText ? 'Done editing text' : 'Edit text manually'
-                  }
-                  variant="secondary"
-                  size="sm"
-                  pill
-                  onPress={() => setEditingDraftText((v) => !v)}
-                />
-              }
-              padding="lg"
+            </View>
+            <DSText
+              variant="caption"
+              weight="semibold"
+              tone={localSourceChecked ? 'primary' : 'danger'}
             >
-              <View
-                style={{ gap: theme.spacing.lg, alignItems: 'stretch' }}
-                className="flex-col lg:flex-row"
-              >
-                {/* LEFT COLUMN: DRAFT HEADLINE, SENTENCES (SUPPORTED / UNSUPPORTED) & WHY IT MATTERS */}
-                <View
-                  style={{ flex: 1, gap: theme.spacing.md }}
-                  className="w-full lg:w-1/2"
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <DSText
-                      variant="micro"
-                      weight="bold"
-                      tone="tertiary"
-                      uppercase
-                    >
-                      Draft Story (Left)
-                    </DSText>
-                    {isDirty ? (
-                      <DSText
-                        variant="caption"
-                        weight="semibold"
-                        tone="warning"
-                      >
-                        Unsaved edits
-                      </DSText>
-                    ) : null}
-                  </View>
+              I checked this against the source (required to approve &ldquo;Could
+              not verify&rdquo; stories)
+            </DSText>
+          </Pressable>
+        ) : null}
+      </View>
 
-                  {editingDraftText ? (
-                    <View style={{ gap: theme.spacing.sm }}>
-                      <DSText variant="caption" weight="semibold" tone="secondary">
-                        Headline
-                      </DSText>
-                      <DSInput
-                        value={headline}
-                        onChangeText={setHeadline}
-                        multiline
-                        style={[
-                          theme.typography.subhead,
-                          { fontWeight: '700', minHeight: 56 },
-                        ]}
-                      />
-                      <DSText variant="caption" weight="semibold" tone="secondary">
-                        Summary
-                      </DSText>
-                      <DSInput
-                        value={summary}
-                        onChangeText={setSummary}
-                        multiline
-                        textAlignVertical="top"
-                        style={{ minHeight: 150 }}
-                      />
-                    </View>
-                  ) : (
-                    <View style={{ gap: theme.spacing.sm }}>
-                      <DSText variant="title3" weight="bold" tone="primary">
-                        {headline}
-                      </DSText>
-
-                      <View style={{ gap: theme.spacing.xs + 2 }}>
-                        {sentenceMappings.map((item) => {
-                          const isSelected = selectedSentenceIdx === item.idx;
-                          const badgeProps =
-                            item.status === 'supported'
-                              ? { label: 'Supported', tone: 'success' as const }
-                              : item.status === 'unsupported'
-                                ? {
-                                    label: 'Unsupported',
-                                    tone: 'danger' as const,
-                                  }
-                                : {
-                                    label: 'Snippet only',
-                                    tone: 'warning' as const,
-                                  };
-
-                          return (
-                            <Pressable
-                              key={item.idx}
-                              onPress={() => setSelectedSentenceIdx(item.idx)}
-                            >
-                              <DSSurface
-                                variant="surface"
-                                radius="sm"
-                                bordered
-                                style={{
-                                  padding: theme.spacing.md,
-                                  gap: theme.spacing.xs,
-                                  backgroundColor: isSelected
-                                    ? theme.colors.accentSoft
-                                    : item.status === 'unsupported'
-                                      ? theme.colors.tones.danger.bg
-                                      : theme.colors.surface,
-                                  borderColor: isSelected
-                                    ? theme.colors.accentBorder
-                                    : item.status === 'unsupported'
-                                      ? theme.colors.tones.danger.border
-                                      : theme.colors.borderSubtle,
-                                }}
-                              >
-                                <View
-                                  style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: theme.spacing.sm,
-                                  }}
-                                >
-                                  <DSText
-                                    variant="micro"
-                                    weight="bold"
-                                    tone="tertiary"
-                                    uppercase
-                                  >
-                                    Sentence {item.idx + 1}
-                                  </DSText>
-                                  <DSBadge
-                                    label={badgeProps.label}
-                                    tone={badgeProps.tone}
-                                  />
-                                </View>
-                                <DSText
-                                  variant="body"
-                                  weight={isSelected ? 'semibold' : 'regular'}
-                                  tone="primary"
-                                >
-                                  {item.sentence}
-                                </DSText>
-                              </DSSurface>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  )}
-
-                  {article.ai_explanation ? (
-                    <DSSurface
-                      variant="muted"
-                      radius="sm"
-                      bordered
-                      style={{ padding: theme.spacing.md, gap: 4 }}
-                    >
-                      <DSText
-                        variant="micro"
-                        weight="bold"
-                        tone="tertiary"
-                        uppercase
-                      >
-                        Why it matters (Background explanation)
-                      </DSText>
-                      <DSText variant="caption" tone="secondary">
-                        {article.ai_explanation}
-                      </DSText>
-                    </DSSurface>
-                  ) : null}
-                </View>
-
-                {/* RIGHT COLUMN: SOURCE TEXT WITH INLINE HIGHLIGHTING */}
-                <View
-                  style={{ flex: 1, gap: theme.spacing.md }}
-                  className="w-full lg:w-1/2"
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <DSText
-                      variant="micro"
-                      weight="bold"
-                      tone="tertiary"
-                      uppercase
-                    >
-                      Source Text (Right)
-                    </DSText>
-                    <DSText variant="caption" tone="tertiary">
-                      {snippetUnverified
-                        ? 'Fallback RSS snippet only'
-                        : 'Extracted publisher text'}
-                    </DSText>
-                  </View>
-
-                  {/* Matched Evidence Callout for selected sentence */}
-                  {selectedSentenceIdx !== null &&
-                  sentenceMappings[selectedSentenceIdx] ? (
-                    <DSSurface
-                      variant="muted"
-                      radius="sm"
-                      bordered
-                      style={{ padding: theme.spacing.md, gap: 4 }}
-                    >
-                      <DSText
-                        variant="micro"
-                        weight="bold"
-                        tone={
-                          sentenceMappings[selectedSentenceIdx].status ===
-                          'unsupported'
-                            ? 'danger'
-                            : 'accent'
-                        }
-                        uppercase
-                      >
-                        {sentenceMappings[selectedSentenceIdx].status ===
-                        'unsupported'
-                          ? 'No supporting quote found in source'
-                          : `Matched quote for Sentence ${selectedSentenceIdx + 1}`}
-                      </DSText>
-                      <DSText variant="caption" tone="primary">
-                        {sentenceMappings[selectedSentenceIdx].evidenceQuote &&
-                        sentenceMappings[
-                          selectedSentenceIdx
-                        ].evidenceQuote.toLowerCase() !== 'unsupported'
-                          ? `“${sentenceMappings[selectedSentenceIdx].evidenceQuote}”`
-                          : snippetUnverified
-                            ? 'Only a short RSS snippet was available; open the original source to verify.'
-                            : 'This sentence is not directly supported by a quote in the extracted text.'}
-                      </DSText>
-                    </DSSurface>
-                  ) : null}
-
-                  <DSSurface
-                    variant="muted"
-                    radius="md"
-                    bordered
-                    style={{
-                      padding: theme.spacing.md,
-                      maxHeight: 420,
-                    }}
-                  >
-                    <ScrollView nestedScrollEnabled>
-                      {sourceSegments.length === 0 ? (
-                        <DSText variant="caption" tone="tertiary">
-                          No source text stored for this story. Click &ldquo;Open
-                          source ↗&rdquo; above to read the publisher page.
-                        </DSText>
-                      ) : (
-                        <View style={{ gap: theme.spacing.xs + 2 }}>
-                          {sourceSegments.map((seg, idx) => (
-                            <View
-                              key={idx}
-                              style={{
-                                paddingHorizontal: seg.highlighted
-                                  ? theme.spacing.xs + 2
-                                  : 0,
-                                paddingVertical: seg.highlighted ? 4 : 0,
-                                borderRadius: theme.radii.xs,
-                                backgroundColor: seg.highlighted
-                                  ? theme.colors.accentSoft
-                                  : 'transparent',
-                                borderLeftWidth: seg.highlighted ? 3 : 0,
-                                borderLeftColor: seg.highlighted
-                                  ? theme.colors.accent
-                                  : 'transparent',
-                              }}
-                            >
-                              <DSText
-                                variant="caption"
-                                weight={seg.highlighted ? 'semibold' : 'regular'}
-                                tone={seg.highlighted ? 'primary' : 'secondary'}
-                                style={{ lineHeight: 20 }}
-                              >
-                                {seg.text}
-                              </DSText>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </ScrollView>
-                  </DSSurface>
-                </View>
-              </View>
-            </DSCard>
-
-            {/* FIX 3 & FIX 13: REPORT SCORES HONESTLY IN DETAIL VIEW ("Not verified" for snippet-only) */}
-            <DSCard
-              headerTitle="Judge Rubric Scores"
-              headerSubtitle={
-                snippetUnverified
-                  ? 'Accuracy is reported as "Not verified" because only an RSS snippet was available'
-                  : 'Evaluated by Agent 3 (Quality Judge) against full source text and Grade-6 rubric'
-              }
-              padding="lg"
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: theme.spacing.md,
-                }}
-              >
-                {/* Accuracy Card (Fix 13: Show "Not verified" for snippet-only stories) */}
-                <View style={{ flex: 1, minWidth: 130 }}>
-                  <DSText variant="micro" tone="tertiary">
-                    Accuracy
-                  </DSText>
-                  {snippetUnverified ? (
-                    <>
-                      <DSText
-                        variant="subhead"
-                        weight="bold"
-                        tone="danger"
-                        style={{ marginTop: 4 }}
-                      >
-                        Not verified
-                      </DSText>
-                      <DSText
-                        variant="micro"
-                        tone="tertiary"
-                        style={{ marginTop: 2 }}
-                      >
-                        Snippet only — source check required
-                      </DSText>
-                    </>
-                  ) : (
-                    <>
-                      <DSText
-                        variant="title3"
-                        weight="bold"
-                        tone={getScoreTone(
-                          article.scores?.accuracy ?? article.confidence_score
-                        )}
-                        tabularNums
-                        style={{ marginTop: 2 }}
-                      >
-                        {article.scores?.accuracy ?? article.confidence_score}
-                      </DSText>
-                      <View
-                        style={{
-                          height: 3,
-                          borderRadius: theme.radii.pill,
-                          backgroundColor: theme.colors.surfaceMuted,
-                          marginTop: theme.spacing.xs,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: `${Math.min(100, article.scores?.accuracy ?? article.confidence_score)}%`,
-                            height: '100%',
-                            backgroundColor:
-                              theme.colors.tones[
-                                getScoreTone(
-                                  article.scores?.accuracy ??
-                                    article.confidence_score
-                                )
-                              ].dot,
-                          }}
-                        />
-                      </View>
-                    </>
-                  )}
-                </View>
-
-                {(
-                  [
-                    [
-                      'Neutrality',
-                      article.scores?.neutrality ?? article.confidence_score,
-                    ],
-                    [
-                      'Safety (G)',
-                      article.scores?.safety ?? article.confidence_score,
-                    ],
-                    [
-                      'Readability',
-                      article.scores?.readability ?? article.confidence_score,
-                    ],
-                  ] as const
-                ).map(([label, score]) => {
-                  const tone = getScoreTone(score);
-                  return (
-                    <View key={label} style={{ flex: 1, minWidth: 110 }}>
-                      <DSText variant="micro" tone="tertiary">
-                        {label}
-                      </DSText>
-                      <DSText
-                        variant="title3"
-                        weight="bold"
-                        tone={tone}
-                        tabularNums
-                        style={{ marginTop: 2 }}
-                      >
-                        {score}
-                      </DSText>
-                      <View
-                        style={{
-                          height: 3,
-                          borderRadius: theme.radii.pill,
-                          backgroundColor: theme.colors.surfaceMuted,
-                          marginTop: theme.spacing.xs,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: `${Math.min(100, score)}%`,
-                            height: '100%',
-                            backgroundColor: theme.colors.tones[tone].dot,
-                          }}
-                        />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </DSCard>
-
-            {/* FIX 7: STORY TRACE WITH THREE COLLAPSED STEPS (Fetcher, Summarizer, Judge) */}
-            <DSCard
-              headerTitle="Story Trace · How the 3 Agents Handled This Story"
-              headerSubtitle="Click any agent step to inspect selection rationale, sources, instructions, and Judge reasoning"
-              padding="lg"
-            >
-              <View style={{ gap: theme.spacing.sm }}>
-                {/* Step 1: Fetcher */}
-                <DSSurface
-                  variant="muted"
-                  radius="md"
-                  bordered
-                  style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
-                >
-                  <Pressable
-                    onPress={() => toggleTraceSection('fetcher')}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: theme.spacing.sm,
-                        flex: 1,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: theme.radii.pill,
-                          backgroundColor: snippetUnverified
-                            ? theme.colors.tones.warning.dot
-                            : theme.colors.tones.success.dot,
-                        }}
-                      />
-                      <DSText variant="footnote" weight="bold" tone="primary">
-                        1. Fetcher
-                      </DSText>
-                      <DSText
-                        variant="caption"
-                        tone="secondary"
-                        numberOfLines={1}
-                        style={{ flex: 1 }}
-                      >
-                        {article.source_count ?? 1} outlet(s) ·{' '}
-                        {snippetUnverified
-                          ? 'Fell back to RSS snippet'
-                          : 'Extracted full article text'}
-                      </DSText>
-                    </View>
-                    <DSText variant="caption" weight="semibold" tone="accent">
-                      {openTraceSteps.fetcher ? 'Hide ▲' : 'Show ▼'}
-                    </DSText>
-                  </Pressable>
-
-                  {openTraceSteps.fetcher ? (
-                    <View
-                      style={{
-                        marginTop: theme.spacing.xs,
-                        paddingTop: theme.spacing.sm,
-                        borderTopWidth: theme.layout.borderWidth,
-                        borderTopColor: theme.colors.borderSubtle,
-                        gap: theme.spacing.xs,
-                      }}
-                    >
-                      <DSText variant="caption" weight="semibold" tone="primary">
-                        Selection Rationale:{' '}
-                        <DSText variant="caption" tone="secondary">
-                          {article.selection_reason ||
-                            'Selected for high global impact and multi-outlet coverage.'}
-                        </DSText>
-                      </DSText>
-                      <DSText variant="caption" weight="semibold" tone="primary">
-                        Outlets ({article.source_count ?? 1}):{' '}
-                        <DSText variant="caption" tone="secondary">
-                          {(article.source_names ?? []).join(', ') || 'Primary feed'}
-                        </DSText>
-                      </DSText>
-                      {fetcherStep?.duration_ms ? (
-                        <DSText variant="micro" tone="tertiary">
-                          Step duration: {fetcherStep.duration_ms}ms
-                        </DSText>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </DSSurface>
-
-                {/* Step 2: Summarizer */}
-                <DSSurface
-                  variant="muted"
-                  radius="md"
-                  bordered
-                  style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
-                >
-                  <Pressable
-                    onPress={() => toggleTraceSection('summarizer')}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: theme.spacing.sm,
-                        flex: 1,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: theme.radii.pill,
-                          backgroundColor: theme.colors.tones.success.dot,
-                        }}
-                      />
-                      <DSText variant="footnote" weight="bold" tone="primary">
-                        2. Summarizer
-                      </DSText>
-                      <DSText
-                        variant="caption"
-                        tone="secondary"
-                        numberOfLines={1}
-                        style={{ flex: 1 }}
-                      >
-                        Policy {snapshot?.prompt_version || article.prompt_version || 'v1'}{' '}
-                        · {snapshot?.reading_level || 'grade 6'} · ~
-                        {snapshot?.target_summary_words || 60} words
-                        {article.auto_retried_complexity
-                          ? ' · Auto-simplified once'
-                          : ''}
-                      </DSText>
-                    </View>
-                    <DSText variant="caption" weight="semibold" tone="accent">
-                      {openTraceSteps.summarizer ? 'Hide ▲' : 'Show ▼'}
-                    </DSText>
-                  </Pressable>
-
-                  {openTraceSteps.summarizer ? (
-                    <View
-                      style={{
-                        marginTop: theme.spacing.xs,
-                        paddingTop: theme.spacing.sm,
-                        borderTopWidth: theme.layout.borderWidth,
-                        borderTopColor: theme.colors.borderSubtle,
-                        gap: theme.spacing.xs,
-                      }}
-                    >
-                      <DSText variant="caption" tone="secondary">
-                        {summarizerStep?.summary ||
-                          `Rewrote story at ${snapshot?.reading_level || 'grade 6'} level in ${snapshot?.tone || 'calm_neutral'} tone.`}
-                      </DSText>
-                      {snapshot?.admin_instructions ? (
-                        <DSText variant="caption" tone="primary">
-                          Tier 2 Admin Instructions: {snapshot.admin_instructions}
-                        </DSText>
-                      ) : null}
-                      {snapshot?.editor_redirect ? (
-                        <DSText variant="caption" tone="accent">
-                          Editor Redirect: {snapshot.editor_redirect}
-                        </DSText>
-                      ) : null}
-                      <DSText variant="micro" tone="tertiary">
-                        Locked Core: {snapshot?.locked_core_summary || LOCKED_CORE_SUMMARY}
-                      </DSText>
-                    </View>
-                  ) : null}
-                </DSSurface>
-
-                {/* Step 3: Judge */}
-                <DSSurface
-                  variant="muted"
-                  radius="md"
-                  bordered
-                  style={{ padding: theme.spacing.md, gap: theme.spacing.xs }}
-                >
-                  <Pressable
-                    onPress={() => toggleTraceSection('judge')}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: theme.spacing.sm,
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: theme.spacing.sm,
-                        flex: 1,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: theme.radii.pill,
-                          backgroundColor:
-                            theme.colors.tones[
-                              getEditorialStateTone(editorialState)
-                            ].dot,
-                        }}
-                      />
-                      <DSText variant="footnote" weight="bold" tone="primary">
-                        3. Judge
-                      </DSText>
-                      <DSText
-                        variant="caption"
-                        tone="secondary"
-                        numberOfLines={1}
-                        style={{ flex: 1 }}
-                      >
-                        {editorialState} ·{' '}
-                        {flags.length > 0
-                          ? flags.map(getFlagShortLabel).join(', ')
-                          : 'No flags'}
-                      </DSText>
-                    </View>
-                    <DSText variant="caption" weight="semibold" tone="accent">
-                      {openTraceSteps.judge ? 'Hide ▲' : 'Show ▼'}
-                    </DSText>
-                  </Pressable>
-
-                  {openTraceSteps.judge ? (
-                    <View
-                      style={{
-                        marginTop: theme.spacing.xs,
-                        paddingTop: theme.spacing.sm,
-                        borderTopWidth: theme.layout.borderWidth,
-                        borderTopColor: theme.colors.borderSubtle,
-                        gap: theme.spacing.xs,
-                      }}
-                    >
-                      <DSText variant="caption" weight="semibold" tone="primary">
-                        Judge Reasoning:
-                      </DSText>
-                      <DSText variant="caption" tone="secondary">
-                        {article.confidence_reasoning ||
-                          judgeStep?.summary ||
-                          'Verified claims and rubric scores.'}
-                      </DSText>
-                      {flags.length > 0 ? (
-                        <View style={{ gap: 2, marginTop: 4 }}>
-                          {flags.map((f: ArticleFlag) => (
-                            <DSText key={f} variant="caption" tone="danger">
-                              • {getFlagShortLabel(f)}: {getFlagPlainReason(f)}
-                            </DSText>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </DSSurface>
-              </View>
-            </DSCard>
-
-            {feedback ? (
-              <DSSurface
-                radius="md"
-                bordered
-                style={{
-                  backgroundColor: theme.colors.accentSoft,
-                  borderColor: theme.colors.accentBorder,
-                  paddingHorizontal: theme.spacing.lg,
-                  paddingVertical: theme.spacing.md,
-                }}
-              >
-                <DSText variant="footnote" weight="medium" tone="accent">
-                  {feedback}
-                </DSText>
-              </DSSurface>
-            ) : null}
-          </View>
-        </ScrollView>
-
-        {/* Bottom Action Bar (Fix 11: Pre-flight source check for "Could not verify" + Fix 15: Unpublish) */}
-        <View
-          style={{
-            borderTopWidth: theme.layout.borderWidth,
-            borderTopColor: theme.colors.borderSubtle,
-            backgroundColor: theme.colors.surface,
-            paddingHorizontal: theme.spacing.xl,
-            paddingVertical: theme.spacing.md,
+      {/* Main Editorial Workspace + Right Agent Trace Panel */}
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          flexDirection: isWideSplit ? 'row' : 'column',
+        }}
+      >
+        <ScrollView
+          style={{ flex: 1, minHeight: 0, minWidth: 0 }}
+          contentContainerStyle={{
+            paddingHorizontal: theme.spacing.xxl,
+            paddingVertical: theme.spacing.xl,
+            paddingBottom: theme.spacing.xxxl,
+            gap: theme.spacing.xl,
           }}
         >
+        {/* 1. Headline First (Editorial Hierarchy) */}
+        <View style={{ gap: theme.spacing.xs }}>
+          <DSText variant="caption" tone="tertiary">
+            {article.date}
+            {article.topic ? ` · ${article.topic}` : ''}
+            {article.region ? ` · ${article.region}` : ''}
+            {article.source_names?.length
+              ? ` · ${article.source_names.join(', ')}`
+              : ''}
+          </DSText>
+
           <View
             style={{
-              maxWidth: 980,
-              width: '100%',
-              alignSelf: 'center',
-              gap: theme.spacing.sm,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: theme.spacing.md,
             }}
           >
-            {/* Fix 11: Pre-flight check before publishing "Could not verify" stories */}
-            {requiresPreFlightCheck && article.status !== 'published' ? (
-              <Pressable
-                onPress={() => void handleToggleSourceCheck()}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                  paddingVertical: 4,
-                }}
-              >
-                <View
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 4,
-                    borderWidth: 1.5,
-                    borderColor: localSourceChecked
-                      ? theme.colors.accent
-                      : theme.colors.tones.danger.dot,
-                    backgroundColor: localSourceChecked
-                      ? theme.colors.accent
-                      : 'transparent',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {localSourceChecked ? (
-                    <DSText variant="micro" weight="bold" tone="inverse">
-                      ✓
-                    </DSText>
-                  ) : null}
-                </View>
-                <DSText
-                  variant="caption"
-                  weight="semibold"
-                  tone={localSourceChecked ? 'primary' : 'danger'}
-                >
-                  I checked this against the source (required to approve
-                  “Could not verify” stories)
+            <View style={{ flex: 1, minWidth: 260 }}>
+              {editingDraftText ? (
+                <DSInput
+                  value={headline}
+                  onChangeText={setHeadline}
+                  multiline
+                  style={[
+                    theme.typography.title2,
+                    { fontWeight: '600', minHeight: 52 },
+                  ]}
+                />
+              ) : (
+                <DSText variant="title2" weight="semibold" tone="primary">
+                  {headline}
                 </DSText>
-              </Pressable>
-            ) : null}
+              )}
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: theme.spacing.sm,
+              }}
+            >
+              {isDirty ? (
+                <DSBadge label="Unsaved edits" tone="warning" />
+              ) : null}
+              <DSButton
+                label={editingDraftText ? 'Done editing' : 'Edit text'}
+                variant="secondary"
+                size="sm"
+                onPress={() => setEditingDraftText((v) => !v)}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* 2. Editorial Review & AI Action Controls */}
+        <View style={{ gap: theme.spacing.sm }}>
+          <DSText variant="headline" weight="semibold" tone="primary">
+            Editorial review
+          </DSText>
+
+          <DSSurface
+            variant="muted"
+            radius="md"
+            bordered
+            style={{
+              paddingHorizontal: theme.spacing.lg,
+              paddingVertical: theme.spacing.md,
+              gap: theme.spacing.md,
+            }}
+          >
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: theme.spacing.md,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 260, gap: theme.spacing.xxs }}>
+              <DSText
+                variant="caption"
+                weight="semibold"
+                tone={getEditorialStateTone(whyNeedsYou.state)}
+              >
+                {whyNeedsYou.headline}
+              </DSText>
+              {triageNotes.map((note, idx) => (
+                <DSText
+                  key={`${idx}-${note.slice(0, 16)}`}
+                  variant="body"
+                  tone="primary"
+                >
+                  {triageNotes.length > 1 ? `• ${note}` : note}
+                </DSText>
+              ))}
+            </View>
 
             <View
               style={{
                 flexDirection: 'row',
                 flexWrap: 'wrap',
                 alignItems: 'center',
-                justifyContent: 'space-between',
+                gap: theme.spacing.sm,
+              }}
+            >
+              {snippetUnverified ? (
+                <DSButton
+                  label="Try another source"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      redirectInstructions:
+                        'Re-extract from alternate outlet URL and verify all claims against full text.',
+                      tryAlternateSource: true,
+                    })
+                  }
+                />
+              ) : null}
+
+              {flags.includes('TOO_COMPLEX') ? (
+                <DSButton
+                  label="Simplify"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      readingLevel: 'grade 5',
+                      redirectInstructions:
+                        'Simplify reading level to Grade 5–6. Replace complex or technical terms with everyday words and shorten long sentences.',
+                    })
+                  }
+                />
+              ) : null}
+
+              {flags.includes('ONE_SIDED') ? (
+                <DSButton
+                  label="Add other side"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      redirectInstructions:
+                        'Present each side’s position in one calm, neutral attributed sentence so the summary is balanced.',
+                    })
+                  }
+                />
+              ) : null}
+
+              {flags.includes('LOADED_LANGUAGE') ? (
+                <DSButton
+                  label="Neutralize tone"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      redirectInstructions:
+                        'Replace any loaded or emotional adjectives with plain, neutral verbs and attributed statements.',
+                    })
+                  }
+                />
+              ) : null}
+
+              {flags.includes('GRAPHIC_DETAIL') ? (
+                <DSButton
+                  label="Soften for G-rating"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      redirectInstructions:
+                        'Remove all graphic or injury details and state what happened in one plain factual G-rated sentence.',
+                    })
+                  }
+                />
+              ) : null}
+
+              <DSButton
+                label={showCustomSteer ? 'Hide rewrite ▲' : 'Rewrite with AI ▼'}
+                variant="secondary"
+                size="sm"
+                onPress={() => setShowCustomSteer((v) => !v)}
+              />
+            </View>
+          </View>
+
+          {showCustomSteer ? (
+            <DSSurface
+              variant="surface"
+              radius="sm"
+              bordered
+              style={{ padding: theme.spacing.md, gap: theme.spacing.md }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: theme.spacing.lg,
+                }}
+              >
+                <View style={{ gap: theme.spacing.xs }}>
+                  <DSText variant="micro" weight="semibold" tone="tertiary">
+                    Reading level
+                  </DSText>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: theme.spacing.xs,
+                    }}
+                  >
+                    {READING_LEVELS.map((lvl) => (
+                      <DSChip
+                        key={lvl}
+                        label={lvl}
+                        active={regenLevel === lvl}
+                        onPress={() => setRegenLevel(lvl)}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <View style={{ gap: theme.spacing.xs }}>
+                  <DSText variant="micro" weight="semibold" tone="tertiary">
+                    Target length ({regenWords}w)
+                  </DSText>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: theme.spacing.xs,
+                    }}
+                  >
+                    {WORD_TARGETS.map((w) => (
+                      <DSChip
+                        key={w}
+                        label={`~${w}w`}
+                        active={regenWords === w}
+                        onPress={() => setRegenWords(w)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: theme.spacing.sm,
+                  alignItems: 'center',
+                }}
+              >
+                <DSInput
+                  value={regenRedirect}
+                  onChangeText={setRegenRedirect}
+                  placeholder="Instruction for AI rewrite (e.g., clarify timeline or simplify sentence 2)..."
+                  compact
+                  style={{ flex: 1, minWidth: 240 }}
+                />
+                <DSButton
+                  label="Rewrite & Re-Judge"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'regen'}
+                  disabled={busyAction !== null}
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      redirectInstructions: regenRedirect.trim(),
+                    })
+                  }
+                />
+              </View>
+            </DSSurface>
+          ) : null}
+
+          {regenPreview ? (
+            <DSSurface
+              variant="surface"
+              radius="sm"
+              bordered
+              style={{
+                padding: theme.spacing.md,
+                borderColor: theme.colors.accentBorder,
+                gap: theme.spacing.sm,
+              }}
+            >
+              <DSText variant="micro" weight="semibold" tone="accent">
+                Candidate rewrite
+              </DSText>
+              <DSText variant="subhead" weight="bold" tone="primary">
+                {regenPreview.after.ai_headline}
+              </DSText>
+              <DSText variant="body" tone="primary">
+                {regenPreview.after.ai_summary}
+              </DSText>
+              <DSText variant="caption" tone="secondary">
+                Judge check: {regenPreview.after.confidence_reasoning}
+              </DSText>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'flex-end',
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <DSButton
+                  label="Discard"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => setRegenPreview(null)}
+                />
+                <DSButton
+                  label="Accept Rewrite"
+                  variant="charcoal"
+                  size="sm"
+                  loading={busyAction === 'accept-regen'}
+                  disabled={busyAction !== null}
+                  onPress={handleAcceptRegenerated}
+                />
+              </View>
+            </DSSurface>
+          ) : null}
+          </DSSurface>
+        </View>
+
+        {/* 3. Unified Split Reading Desk (40% Summary / 60% Source Text) */}
+        <View style={{ gap: theme.spacing.sm }}>
+          <DSText variant="headline" weight="semibold" tone="primary">
+            Summary &amp; source
+          </DSText>
+
+          <DSSurface
+            variant="surface"
+            radius="md"
+            bordered
+            style={{
+              overflow: 'hidden',
+              ...theme.shadows.card,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: isWideSplit ? 'row' : 'column',
+                alignItems: 'stretch',
+              }}
+            >
+              {/* Left Column (40%): Clean Readable Summary */}
+              <View
+                style={{
+                  ...(isWideSplit ? { flex: 4 } : { width: '100%' }),
+                  padding: theme.spacing.xl,
+                  gap: theme.spacing.md,
+                  borderColor: theme.colors.borderDefault,
+                  borderRightWidth: isWideSplit ? theme.layout.borderWidth : 0,
+                  borderBottomWidth: isWideSplit ? 0 : theme.layout.borderWidth,
+                }}
+              >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <DSText variant="caption" weight="semibold" tone="secondary">
+                  Summary
+                </DSText>
+                {!editingDraftText ? (
+                  <DSText variant="micro" tone="tertiary">
+                    Click a sentence to highlight its source quote
+                  </DSText>
+                ) : null}
+              </View>
+
+              {editingDraftText ? (
+                <DSInput
+                  value={summary}
+                  onChangeText={setSummary}
+                  multiline
+                  textAlignVertical="top"
+                  style={{ minHeight: 200 }}
+                />
+              ) : (
+                <View style={{ gap: theme.spacing.xs }}>
+                  {sentenceMappings.map((item) => {
+                    const isSelected = selectedSentenceIdx === item.idx;
+                    const isFlagged = item.status !== 'supported';
+                    return (
+                      <Pressable
+                        key={item.idx}
+                        onPress={() => setSelectedSentenceIdx(item.idx)}
+                        style={({ pressed }) => ({
+                          paddingHorizontal: theme.spacing.md,
+                          paddingVertical: theme.spacing.sm,
+                          borderRadius: theme.radii.sm,
+                          borderLeftWidth: 2,
+                          borderLeftColor: isSelected
+                            ? item.status === 'unsupported'
+                              ? theme.colors.tones.danger.text
+                              : theme.colors.accent
+                            : item.status === 'unsupported'
+                              ? theme.colors.tones.danger.border
+                              : 'transparent',
+                          backgroundColor: isSelected
+                            ? item.status === 'unsupported'
+                              ? theme.colors.tones.danger.bg
+                              : theme.colors.accentSoft
+                            : pressed
+                              ? theme.colors.surfaceHover
+                              : 'transparent',
+                          ...(Platform.OS === 'web'
+                            ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                            : {}),
+                        })}
+                      >
+                        <DSText
+                          variant="body"
+                          weight={isSelected ? 'medium' : 'regular'}
+                          tone="primary"
+                        >
+                          {item.sentence}
+                        </DSText>
+                        {isFlagged ? (
+                          <View style={{ marginTop: theme.spacing.xxs }}>
+                            <DSBadge
+                              label={
+                                item.status === 'unsupported'
+                                  ? 'Unsupported in source'
+                                  : 'Snippet only'
+                              }
+                              tone={
+                                item.status === 'unsupported'
+                                  ? 'danger'
+                                  : 'warning'
+                              }
+                            />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
+              {article.ai_explanation ? (
+                <>
+                  <DSDivider />
+                  <View style={{ gap: theme.spacing.xxs }}>
+                    <DSText variant="caption" weight="semibold" tone="secondary">
+                      Why it matters
+                    </DSText>
+                    <DSText variant="footnote" tone="secondary">
+                      {article.ai_explanation}
+                    </DSText>
+                  </View>
+                </>
+              ) : null}
+            </View>
+
+            {/* Right Column (60%): Source Text with Inline Highlighting */}
+            <View
+              style={{
+                ...(isWideSplit ? { flex: 6 } : { width: '100%' }),
+                padding: theme.spacing.xl,
                 gap: theme.spacing.md,
+                backgroundColor: theme.colors.surface,
               }}
             >
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: theme.spacing.sm,
+                  justifyContent: 'space-between',
                 }}
               >
-                <DSButton
-                  label={article.status === 'rejected' ? 'Rejected' : 'Reject'}
-                  variant="danger"
-                  size="md"
-                  loading={busyAction === 'reject'}
-                  disabled={busyAction !== null || article.status === 'rejected'}
-                  onPress={handleReject}
-                />
-
-                {/* Fix 15: Add Unpublish so editor can reverse a decision with confidence */}
-                {article.status === 'published' && onUnpublish ? (
-                  <DSButton
-                    label="Unpublish"
-                    variant="secondary"
-                    size="md"
-                    loading={busyAction === 'unpublish'}
-                    disabled={busyAction !== null}
-                    onPress={handleUnpublish}
-                  />
-                ) : null}
+                <DSText variant="caption" weight="semibold" tone="secondary">
+                  Source text
+                </DSText>
+                <DSText variant="micro" tone="tertiary">
+                  {snippetUnverified
+                    ? 'Fallback RSS snippet only'
+                    : 'Extracted publisher text'}
+                </DSText>
               </View>
 
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: theme.spacing.sm,
-                }}
+              {activeMapping?.status === 'unsupported' ? (
+                <DSSurface
+                  radius="sm"
+                  bordered
+                  style={{
+                    backgroundColor: theme.colors.tones.danger.bg,
+                    borderColor: theme.colors.tones.danger.border,
+                    paddingHorizontal: theme.spacing.md,
+                    paddingVertical: theme.spacing.sm,
+                  }}
+                >
+                  <DSText variant="caption" weight="semibold" tone="danger">
+                    No direct quote found in the source text for the selected sentence.
+                  </DSText>
+                </DSSurface>
+              ) : null}
+
+              <ScrollView
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                style={{ maxHeight: 440 }}
+                contentContainerStyle={{ gap: theme.spacing.sm }}
               >
-                {isDirty || editingDraftText ? (
-                  <DSButton
-                    label="Save Changes"
-                    variant="secondary"
-                    size="md"
-                    loading={busyAction === 'save'}
-                    disabled={busyAction !== null}
-                    onPress={handleSave}
-                  />
-                ) : null}
-
-                <DSButton
-                  label={
-                    article.status === 'published'
-                      ? 'Update Published'
-                      : 'Approve & Publish'
-                  }
-                  variant="primary"
-                  size="md"
-                  loading={busyAction === 'approve'}
-                  disabled={busyAction !== null || !canApproveNow}
-                  onPress={handleApprove}
-                />
-              </View>
+                {sourceSegments.length === 0 ? (
+                  <DSText variant="footnote" tone="tertiary">
+                    No source text stored for this story. Click &ldquo;Open source
+                    ↗&rdquo; in Agent trace below to read the original article.
+                  </DSText>
+                ) : (
+                  sourceSegments.map((seg, idx) => (
+                    <View
+                      key={idx}
+                      style={{
+                        paddingHorizontal: seg.highlighted
+                          ? theme.spacing.md
+                          : 0,
+                        paddingVertical: seg.highlighted
+                          ? theme.spacing.xs
+                          : 0,
+                        borderRadius: theme.radii.xs,
+                        backgroundColor: seg.highlighted
+                          ? theme.colors.accentSoft
+                          : 'transparent',
+                        borderLeftWidth: seg.highlighted ? 2 : 0,
+                        borderLeftColor: seg.highlighted
+                          ? theme.colors.accent
+                          : 'transparent',
+                      }}
+                    >
+                      <DSText
+                        variant="footnote"
+                        weight={seg.highlighted ? 'semibold' : 'regular'}
+                        tone={seg.highlighted ? 'primary' : 'secondary'}
+                      >
+                        {seg.text}
+                      </DSText>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
             </View>
           </View>
+        </DSSurface>
         </View>
-      </Animated.View>
+
+        {!isWideSplit ? agentTraceSection : null}
+
+        {feedback ? (
+          <DSSurface
+            radius="md"
+            bordered
+            style={{
+              backgroundColor: theme.colors.accentSoft,
+              borderColor: theme.colors.accentBorder,
+              paddingHorizontal: theme.spacing.lg,
+              paddingVertical: theme.spacing.md,
+            }}
+          >
+            <DSText variant="footnote" weight="medium" tone="accent">
+              {feedback}
+            </DSText>
+          </DSSurface>
+        ) : null}
+        </ScrollView>
+
+        {isWideSplit ? (
+          <View
+            style={{
+              width: tracePanelWidth,
+              borderLeftWidth: theme.layout.borderWidth,
+              borderLeftColor: theme.colors.borderDefault,
+              backgroundColor: theme.colors.canvas,
+            }}
+          >
+            <ScrollView
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={{
+                padding: theme.spacing.xl,
+                paddingBottom: theme.spacing.xxxl,
+              }}
+            >
+              {agentTraceSection}
+            </ScrollView>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }

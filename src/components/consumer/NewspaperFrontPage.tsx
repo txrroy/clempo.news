@@ -15,6 +15,8 @@ import {
   getSourceLabel,
   openArticleUrl,
 } from '@/lib/consumerUtils';
+import { ThumbIcon } from './ThumbIcon';
+import type { ArticlePreferenceVote } from '@/lib/topicPreferences';
 import type { Article } from '@/types/article';
 
 interface NewspaperFrontPageProps {
@@ -24,6 +26,8 @@ interface NewspaperFrontPageProps {
   loadingOlder?: boolean;
   hasMoreOlder?: boolean;
   onLoadOlder?: () => Promise<void> | void;
+  articleVotes?: Record<string, ArticlePreferenceVote>;
+  onVoteArticle?: (article: Article, vote: ArticlePreferenceVote) => void;
 }
 
 function getColumnCount(width: number): number {
@@ -44,7 +48,79 @@ function ArticleContextDrawer({ explanation }: { explanation: string }) {
   );
 }
 
-function LeadStory({ article }: { article: Article }) {
+function StoryVoteButtons({
+  article,
+  currentVote,
+  onVoteArticle,
+}: {
+  article: Article;
+  currentVote?: ArticlePreferenceVote;
+  onVoteArticle?: (article: Article, vote: ArticlePreferenceVote) => void;
+}) {
+  if (!onVoteArticle) return null;
+  const isLiked = currentVote === 'like';
+  const isDisliked = currentVote === 'dislike';
+  return (
+    <View className="flex-row items-center gap-1.5">
+      <Pressable
+        onPress={() => onVoteArticle(article, 'like')}
+        accessibilityLabel="Like this story"
+        accessibilityState={{ selected: isLiked }}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isLiked ? '#ECFDF5' : '#F5F5F4',
+          borderWidth: 1,
+          borderColor: isLiked ? 'rgba(13, 148, 136, 0.45)' : 'rgba(28, 25, 23, 0.08)',
+        }}
+      >
+        <ThumbIcon
+          direction="up"
+          filled={isLiked}
+          color={isLiked ? '#0D9488' : '#78716C'}
+          size={13}
+        />
+      </Pressable>
+      <Pressable
+        onPress={() => onVoteArticle(article, 'dislike')}
+        accessibilityLabel="Dislike this story"
+        accessibilityState={{ selected: isDisliked }}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isDisliked ? '#FEF2F2' : '#F5F5F4',
+          borderWidth: 1,
+          borderColor: isDisliked ? 'rgba(220, 38, 38, 0.4)' : 'rgba(28, 25, 23, 0.08)',
+        }}
+      >
+        <ThumbIcon
+          direction="down"
+          filled={isDisliked}
+          color={isDisliked ? '#DC2626' : '#78716C'}
+          size={13}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
+function LeadStory({
+  article,
+  currentVote,
+  onVoteArticle,
+  isNarrow = false,
+}: {
+  article: Article;
+  currentVote?: ArticlePreferenceVote;
+  onVoteArticle?: (article: Article, vote: ArticlePreferenceVote) => void;
+  isNarrow?: boolean;
+}) {
   const [showContext, setShowContext] = useState(false);
   const sourceLabel = getSourceLabel(article);
   const kicker = article.topic
@@ -56,11 +132,13 @@ function LeadStory({ article }: { article: Article }) {
       <View
         className={
           article.image_url
-            ? 'flex-row items-start gap-8'
+            ? isNarrow
+              ? 'flex-col gap-5'
+              : 'flex-row items-start gap-8'
             : 'max-w-3xl'
         }
       >
-        <View className="flex-1">
+        <View className={isNarrow ? 'w-full' : 'flex-1'}>
           <View className="flex-row items-center gap-2 mb-2.5">
             <Text className="text-[11px] font-bold uppercase tracking-[0.14em] text-accent">
               {kicker}
@@ -87,31 +165,38 @@ function LeadStory({ article }: { article: Article }) {
             <ArticleContextDrawer explanation={article.ai_explanation} />
           ) : null}
 
-          <View className="flex-row items-center gap-5 pt-2">
-            <Pressable
-              onPress={() => openArticleUrl(article.original_url)}
-              className="py-1"
-            >
-              <Text className="text-[13px] font-semibold text-accent">
-                Read full story ↗
-              </Text>
-            </Pressable>
-
-            {article.ai_explanation ? (
+          <View className="flex-row items-center justify-between gap-4 pt-2">
+            <View className="flex-row items-center gap-5">
               <Pressable
-                onPress={() => setShowContext((prev) => !prev)}
+                onPress={() => openArticleUrl(article.original_url)}
                 className="py-1"
               >
-                <Text className="text-[13px] font-medium text-stone-500">
-                  {showContext ? 'Hide context' : "What's this about?"}
+                <Text className="text-[13px] font-semibold text-accent">
+                  Read full story ↗
                 </Text>
               </Pressable>
-            ) : null}
+
+              {article.ai_explanation ? (
+                <Pressable
+                  onPress={() => setShowContext((prev) => !prev)}
+                  className="py-1"
+                >
+                  <Text className="text-[13px] font-medium text-stone-500">
+                    {showContext ? 'Hide context' : "What's this about?"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <StoryVoteButtons
+              article={article}
+              currentVote={currentVote}
+              onVoteArticle={onVoteArticle}
+            />
           </View>
         </View>
 
         {article.image_url ? (
-          <View className="w-[44%] max-w-[480px]">
+          <View className={isNarrow ? 'w-full' : 'w-[44%] max-w-[480px]'}>
             <Image
               source={{ uri: article.image_url }}
               contentFit="cover"
@@ -134,10 +219,14 @@ function ColumnStory({
   article,
   isLastInColumn,
   showDate = false,
+  currentVote,
+  onVoteArticle,
 }: {
   article: Article;
   isLastInColumn: boolean;
   showDate?: boolean;
+  currentVote?: ArticlePreferenceVote;
+  onVoteArticle?: (article: Article, vote: ArticlePreferenceVote) => void;
 }) {
   const [showContext, setShowContext] = useState(false);
   const sourceLabel = getSourceLabel(article);
@@ -223,14 +312,21 @@ function ColumnStory({
           <View />
         )}
 
-        <Pressable
-          onPress={() => openArticleUrl(article.original_url)}
-          className="py-1"
-        >
-          <Text className="text-[12.5px] font-semibold text-accent">
-            Read source ↗
-          </Text>
-        </Pressable>
+        <View className="flex-row items-center gap-3">
+          <StoryVoteButtons
+            article={article}
+            currentVote={currentVote}
+            onVoteArticle={onVoteArticle}
+          />
+          <Pressable
+            onPress={() => openArticleUrl(article.original_url)}
+            className="py-1"
+          >
+            <Text className="text-[12.5px] font-semibold text-accent">
+              Read source ↗
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -243,9 +339,12 @@ export function NewspaperFrontPage({
   loadingOlder = false,
   hasMoreOlder = false,
   onLoadOlder,
+  articleVotes,
+  onVoteArticle,
 }: NewspaperFrontPageProps) {
   const { width } = useWindowDimensions();
   const numColumns = getColumnCount(width);
+  const isNarrowWeb = width < 900;
 
   const leadArticle = articles[0];
   const restArticles = articles.slice(1);
@@ -268,7 +367,7 @@ export function NewspaperFrontPage({
       <View className="w-full max-w-[1160px] self-center px-8 pt-6 pb-14">
         {/* Broadsheet Masthead */}
         <View className="border-t border-stone-300 pt-2.5 pb-5">
-          <View className="flex-row items-center justify-between mb-4">
+          <View className="flex-row flex-wrap items-center justify-between gap-2 mb-4">
             <Text className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
               Daily Edition
             </Text>
@@ -297,7 +396,11 @@ export function NewspaperFrontPage({
             />
             <Text
               style={{ fontFamily: Fonts?.serif }}
-              className="text-[44px] leading-[50px] font-bold text-ink text-center tracking-[-0.8px]"
+              className={
+                isNarrowWeb
+                  ? 'text-[34px] leading-[40px] font-bold text-ink text-center tracking-[-0.8px]'
+                  : 'text-[44px] leading-[50px] font-bold text-ink text-center tracking-[-0.8px]'
+              }
             >
               {APP_CONFIG.title}
             </Text>
@@ -318,7 +421,14 @@ export function NewspaperFrontPage({
         ) : null}
 
         {/* Lead Story */}
-        {leadArticle ? <LeadStory article={leadArticle} /> : null}
+        {leadArticle ? (
+          <LeadStory
+            article={leadArticle}
+            currentVote={articleVotes?.[leadArticle.id]}
+            onVoteArticle={onVoteArticle}
+            isNarrow={isNarrowWeb}
+          />
+        ) : null}
 
         {/* Multi-Column Broadsheet Section */}
         {restArticles.length > 0 ? (
@@ -342,6 +452,8 @@ export function NewspaperFrontPage({
                       key={article.id}
                       article={article}
                       isLastInColumn={itemIdx === columnItems.length - 1}
+                      currentVote={articleVotes?.[article.id]}
+                      onVoteArticle={onVoteArticle}
                     />
                   ))}
                 </View>
@@ -395,6 +507,8 @@ export function NewspaperFrontPage({
                         article={article}
                         isLastInColumn={itemIdx === columnItems.length - 1}
                         showDate
+                        currentVote={articleVotes?.[article.id]}
+                        onVoteArticle={onVoteArticle}
                       />
                     ))}
                   </View>

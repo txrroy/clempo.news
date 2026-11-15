@@ -1,5 +1,6 @@
-import { View, Pressable, ScrollView } from 'react-native';
-import { useDSTheme, DSText } from '@/design-system';
+import { useState, type ReactNode } from 'react';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
+import { DSDivider, DSText, useDSTheme } from '@/design-system';
 
 export type InboxFolder =
   | { type: 'all-pending' }
@@ -22,6 +23,8 @@ interface InboxSidebarProps {
   selectedFolder: InboxFolder;
   onSelectFolder: (folder: InboxFolder) => void;
 }
+
+type SectionKey = 'all' | 'today' | 'older';
 
 const MONTH_NAMES = [
   'Jan',
@@ -61,17 +64,10 @@ interface SidebarItemProps {
   label: string;
   count: number;
   active: boolean;
-  dotColor?: string;
   onPress: () => void;
 }
 
-function SidebarItem({
-  label,
-  count,
-  active,
-  dotColor,
-  onPress,
-}: SidebarItemProps) {
+function SidebarItem({ label, count, active, onPress }: SidebarItemProps) {
   const { theme } = useDSTheme();
 
   return (
@@ -84,56 +80,108 @@ function SidebarItem({
           justifyContent: 'space-between',
           paddingHorizontal: theme.spacing.md,
           paddingVertical: theme.spacing.sm,
-          marginHorizontal: theme.spacing.sm,
           marginBottom: theme.spacing.xxs,
           borderRadius: theme.radii.sm,
           backgroundColor: active
-            ? theme.colors.textPrimary
+            ? theme.colors.accentSoft
             : pressed
               ? theme.colors.surfaceHover
               : 'transparent',
+          borderWidth: theme.layout.borderWidth,
+          borderColor: active ? theme.colors.accentBorder : 'transparent',
+          ...(Platform.OS === 'web'
+            ? ({ cursor: 'pointer' } as Record<string, unknown>)
+            : {}),
         },
       ]}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: theme.spacing.sm,
-          flex: 1,
-          minWidth: 0,
-        }}
+      <DSText
+        variant="footnote"
+        weight={active ? 'semibold' : 'medium'}
+        tone={active ? 'accent' : 'primary'}
+        numberOfLines={1}
+        style={{ flex: 1, minWidth: 0 }}
       >
-        {dotColor ? (
-          <View
-            style={{
-              width: theme.spacing.sm,
-              height: theme.spacing.sm,
-              borderRadius: theme.radii.pill,
-              backgroundColor: active ? theme.colors.textInverse : dotColor,
-            }}
-          />
-        ) : null}
-        <DSText
-          variant="footnote"
-          weight={active ? 'semibold' : 'medium'}
-          tone={active ? 'inverse' : 'primary'}
-          numberOfLines={1}
-        >
-          {label}
-        </DSText>
-      </View>
+        {label}
+      </DSText>
 
       <DSText
         variant="caption"
-        weight={active ? 'bold' : 'medium'}
-        tone={active ? 'inverse' : 'tertiary'}
+        weight={active ? 'semibold' : 'medium'}
+        tone={active ? 'accent' : 'tertiary'}
         tabularNums
         style={{ marginLeft: theme.spacing.sm }}
       >
         {count}
       </DSText>
     </Pressable>
+  );
+}
+
+interface CollapsibleSectionProps {
+  title: string;
+  countLabel?: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}
+
+function CollapsibleSection({
+  title,
+  countLabel,
+  collapsed,
+  onToggle,
+  children,
+}: CollapsibleSectionProps) {
+  const { theme } = useDSTheme();
+
+  return (
+    <View style={{ gap: theme.spacing.xxs }}>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: theme.spacing.xs,
+          borderRadius: theme.radii.sm,
+          backgroundColor: pressed ? theme.colors.surfaceHover : 'transparent',
+          ...(Platform.OS === 'web'
+            ? ({ cursor: 'pointer' } as Record<string, unknown>)
+            : {}),
+        })}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: theme.spacing.xs,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          <DSText variant="micro" weight="semibold" tone="tertiary">
+            {collapsed ? '▸' : '▾'}
+          </DSText>
+          <DSText
+            variant="micro"
+            weight="semibold"
+            tone="tertiary"
+            numberOfLines={1}
+          >
+            {title}
+          </DSText>
+        </View>
+        {countLabel ? (
+          <DSText variant="micro" tone="tertiary" tabularNums>
+            {countLabel}
+          </DSText>
+        ) : null}
+      </Pressable>
+
+      {!collapsed ? <View style={{ paddingTop: theme.spacing.xxs }}>{children}</View> : null}
+    </View>
   );
 }
 
@@ -147,99 +195,97 @@ export function InboxSidebar({
   onSelectFolder,
 }: InboxSidebarProps) {
   const { theme } = useDSTheme();
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<SectionKey, boolean>
+  >({
+    all: false,
+    today: false,
+    older: false,
+  });
+
+  const toggleSection = (key: SectionKey) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <View
+      className="w-full md:w-[236px] md:shrink-0 max-h-60 md:max-h-none border-b md:border-b-0 md:border-r"
       style={{
-        backgroundColor: theme.colors.surfaceHeader,
-        borderColor: theme.colors.borderSubtle,
+        backgroundColor: theme.colors.surfaceMuted,
+        borderColor: theme.colors.borderDefault,
+        minHeight: 0,
       }}
-      className="w-full md:w-[220px] md:shrink-0 border-b md:border-b-0 md:border-r"
     >
       <ScrollView
-        style={{ paddingVertical: theme.spacing.md }}
-        className="max-h-56 md:max-h-none md:flex-1"
+        showsVerticalScrollIndicator
+        style={{
+          flex: 1,
+          minHeight: 0,
+          ...(Platform.OS === 'web'
+            ? ({ scrollbarGutter: 'stable' } as Record<string, unknown>)
+            : {}),
+        }}
+        contentContainerStyle={{
+          padding: theme.spacing.md,
+          gap: theme.spacing.sm,
+        }}
       >
-        {/* Heading 0: All Editions */}
-        <View style={{ marginBottom: theme.spacing.lg }}>
-          <DSText
-            variant="micro"
-            weight="bold"
-            tone="tertiary"
-            uppercase
-            style={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingBottom: theme.spacing.xs,
-            }}
-          >
-            All Editions
-          </DSText>
+        <CollapsibleSection
+          title="All Editions"
+          countLabel={String(allPendingCount + allPublishedCount)}
+          collapsed={collapsedSections.all}
+          onToggle={() => toggleSection('all')}
+        >
           <SidebarItem
             label="In Review"
             count={allPendingCount}
-            dotColor={theme.colors.tones.warning.dot}
             active={isSameFolder(selectedFolder, { type: 'all-pending' })}
             onPress={() => onSelectFolder({ type: 'all-pending' })}
           />
           <SidebarItem
             label="All Published"
             count={allPublishedCount}
-            dotColor={theme.colors.tones.success.dot}
             active={isSameFolder(selectedFolder, { type: 'all-published' })}
             onPress={() => onSelectFolder({ type: 'all-published' })}
           />
-        </View>
+        </CollapsibleSection>
 
-        {/* Heading 1: Today */}
-        <View style={{ marginBottom: theme.spacing.lg }}>
-          <DSText
-            variant="micro"
-            weight="bold"
-            tone="tertiary"
-            uppercase
-            style={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingBottom: theme.spacing.xs,
-            }}
-          >
-            Today
-          </DSText>
+        <DSDivider />
+
+        <CollapsibleSection
+          title="Today"
+          countLabel={String(todayPendingCount + todayPublishedCount)}
+          collapsed={collapsedSections.today}
+          onToggle={() => toggleSection('today')}
+        >
           <SidebarItem
             label="Published"
             count={todayPublishedCount}
-            dotColor={theme.colors.tones.success.dot}
             active={isSameFolder(selectedFolder, { type: 'today-published' })}
             onPress={() => onSelectFolder({ type: 'today-published' })}
           />
           <SidebarItem
             label="In Review"
             count={todayPendingCount}
-            dotColor={theme.colors.tones.warning.dot}
             active={isSameFolder(selectedFolder, { type: 'today-pending' })}
             onPress={() => onSelectFolder({ type: 'today-pending' })}
           />
-        </View>
+        </CollapsibleSection>
 
-        {/* Heading 2: Older */}
-        <View>
-          <DSText
-            variant="micro"
-            weight="bold"
-            tone="tertiary"
-            uppercase
-            style={{
-              paddingHorizontal: theme.spacing.lg,
-              paddingBottom: theme.spacing.xs,
-            }}
-          >
-            Older
-          </DSText>
+        <DSDivider />
+
+        <CollapsibleSection
+          title="Older Editions"
+          countLabel={String(olderDates.length)}
+          collapsed={collapsedSections.older}
+          onToggle={() => toggleSection('older')}
+        >
           {olderDates.length === 0 ? (
             <DSText
               variant="caption"
               tone="tertiary"
               style={{
-                paddingHorizontal: theme.spacing.lg,
+                paddingHorizontal: theme.spacing.md,
                 paddingVertical: theme.spacing.xs,
               }}
             >
@@ -261,7 +307,7 @@ export function InboxSidebar({
               />
             ))
           )}
-        </View>
+        </CollapsibleSection>
       </ScrollView>
     </View>
   );

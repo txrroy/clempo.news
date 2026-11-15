@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { View, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 import {
   useDSTheme,
   DSCard,
+  DSSectionHeader,
   DSText,
   DSChip,
   DSBadge,
@@ -175,10 +176,13 @@ export function PolicyGovernancePane({
   );
   const [proposal, setProposal] = useState<PolicyProposal | null>(null);
 
-  useEffect(() => {
+  const policySyncKey = `${activePolicy.active_version}:${activePolicy.updated_at}`;
+  const [syncedPolicyKey, setSyncedPolicyKey] = useState(policySyncKey);
+  if (policySyncKey !== syncedPolicyKey) {
+    setSyncedPolicyKey(policySyncKey);
     setSettings(activePolicy.settings);
     setAdminInstructions(activePolicy.admin_instructions);
-  }, [activePolicy]);
+  }
 
   const handleTest = async () => {
     setBusy('test');
@@ -270,67 +274,33 @@ export function PolicyGovernancePane({
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.canvas }}
-      contentContainerStyle={{
-        padding: theme.spacing.xxl,
-        paddingBottom: theme.spacing.xxxl,
-      }}
-    >
-      <View
-        style={{
-          maxWidth: theme.layout.contentMaxWidth,
-          width: '100%',
-          alignSelf: 'center',
-          gap: theme.spacing.xl,
-        }}
-      >
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: theme.spacing.md,
-          }}
-        >
-          <View>
-            <DSText variant="title3" weight="bold" tone="primary">
-              Global Policy Settings
-            </DSText>
-            <DSText
-              variant="caption"
-              tone="secondary"
-              style={{ marginTop: theme.spacing.xxs }}
-            >
-              Active: {activePolicy.active_version} · Changes apply on the next
-              run and never alter drafts already in the queue.
-            </DSText>
-          </View>
+    <View style={{ gap: theme.spacing.xl }}>
+      <DSSectionHeader
+        title="Global Policy Settings"
+        subtitle={`Active: ${activePolicy.active_version} · Changes apply on the next run and never alter drafts already in the queue.`}
+        right={
           <DSBadge
             label={`Role: ${isAdmin ? 'Admin (All Tiers)' : 'Editor (Tier 1 Only)'}`}
             tone="accent"
           />
-        </View>
-
-        {/* Close the Loop: Learn from Editor Corrections */}
-        <DSCard
-          headerTitle="Pattern Analysis · Learn from Editor Corrections"
-          headerSubtitle="Meta-Agent analyzes human edits & regenerations to propose durable Tier 2 policy updates"
-          headerRight={
-            <DSButton
-              label="Analyze Recent Edits"
-              variant="tinted"
-              size="sm"
-              pill
-              loading={busy === 'propose'}
-              disabled={busy !== null}
-              onPress={handlePropose}
-            />
-          }
-          padding="lg"
-        >
+        }
+      />
+      {/* Close the Loop: Learn from Editor Corrections */}
+      <DSCard
+        headerTitle="Pattern Analysis · Learn from Editor Corrections"
+        headerSubtitle="Meta-Agent analyzes human edits & regenerations to propose durable Tier 2 policy updates"
+        headerRight={
+          <DSButton
+            label="Analyze Recent Edits"
+            variant="secondary"
+            size="sm"
+            loading={busy === 'propose'}
+            disabled={busy !== null}
+            onPress={handlePropose}
+          />
+        }
+        padding="lg"
+      >
           {proposal ? (
             <DSSurface
               radius="md"
@@ -353,9 +323,8 @@ export function PolicyGovernancePane({
               >
                 <DSText
                   variant="micro"
-                  weight="bold"
+                  weight="semibold"
                   tone="accent"
-                  uppercase
                   style={{ marginBottom: theme.spacing.xxs }}
                 >
                   Proposed Tier 2 Addition ({proposal.evidenceCount} reviewed
@@ -404,12 +373,11 @@ export function PolicyGovernancePane({
             <View>
               <DSText
                 variant="micro"
-                weight="bold"
+                weight="semibold"
                 tone="tertiary"
-                uppercase
                 style={{ marginBottom: theme.spacing.sm }}
               >
-                Reading Level
+                Reading level
               </DSText>
               <View
                 style={{
@@ -434,12 +402,11 @@ export function PolicyGovernancePane({
             <View>
               <DSText
                 variant="micro"
-                weight="bold"
+                weight="semibold"
                 tone="tertiary"
-                uppercase
                 style={{ marginBottom: theme.spacing.sm }}
               >
-                Editorial Tone
+                Editorial tone
               </DSText>
               <View
                 style={{
@@ -506,16 +473,71 @@ export function PolicyGovernancePane({
           </View>
         </DSCard>
 
-        {/* Fix 12: Autonomy Ladder per Flag Type */}
+        {/* Fix 12: Autonomy Ladder · Publishing & Flag Handling */}
         <DSCard
-          headerTitle="Autonomy Ladder · How Agents Handle Each Flag Type"
-          headerSubtitle="Choose when the agents should ask you vs. self-correct. Publishing always stays locked to the human editor."
+          headerTitle="Autonomy Ladder · Publishing & Flag Handling"
+          headerSubtitle="Choose when agents ask you vs. self-correct, and whether Ready stories auto-publish. Needs-check & Unverified stories always stay locked to humans."
           headerRight={
-            <DSBadge label="Publishing Locked to Human" tone="success" dot />
+            settings.auto_publish_ready ? (
+              <DSBadge label="Auto-Publish Ready: ON" tone="warning" />
+            ) : (
+              <DSBadge label="Publishing Locked to Human" tone="success" />
+            )
           }
           padding="lg"
         >
           <View style={{ gap: theme.spacing.md }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: theme.spacing.md,
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 220, gap: theme.spacing.xxs }}>
+                <DSText variant="footnote" weight="bold" tone="primary">
+                  Publication Autonomy (Ready to approve)
+                </DSText>
+                <DSText variant="caption" tone="secondary">
+                  Controls whether stories that pass every Judge check publish
+                  automatically or wait for your sign-off.
+                </DSText>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: theme.spacing.xs + 2,
+                }}
+              >
+                <DSChip
+                  label="Human sign-off required"
+                  active={!settings.auto_publish_ready}
+                  onPress={() =>
+                    setSettings({
+                      ...settings,
+                      auto_publish_ready: false,
+                    })
+                  }
+                />
+                <DSChip
+                  label="Auto-publish Ready stories"
+                  active={Boolean(settings.auto_publish_ready)}
+                  onPress={() =>
+                    setSettings({
+                      ...settings,
+                      auto_publish_ready: true,
+                    })
+                  }
+                />
+              </View>
+            </View>
+
+            <DSDivider />
+
             {AUTONOMY_FLAGS.map((flag, idx) => {
               const currentMap = {
                 ...DEFAULT_FLAG_AUTONOMY,
@@ -538,7 +560,7 @@ export function PolicyGovernancePane({
                       gap: theme.spacing.md,
                     }}
                   >
-                    <View style={{ flex: 1, minWidth: 220, gap: 2 }}>
+                    <View style={{ flex: 1, minWidth: 220, gap: theme.spacing.xxs }}>
                       <DSText variant="footnote" weight="bold" tone="primary">
                         {getFlagShortLabel(flag)}
                       </DSText>
@@ -664,7 +686,7 @@ export function PolicyGovernancePane({
             {testSamples && testSamples.length > 0 ? (
               <View style={{ gap: theme.spacing.md, paddingTop: theme.spacing.sm }}>
                 <DSDivider />
-                <DSText variant="micro" weight="bold" tone="accent" uppercase>
+                <DSText variant="micro" weight="semibold" tone="accent">
                   Dry-Run Preview ({testSamples.length} sample articles · No drafts
                   modified)
                 </DSText>
@@ -688,9 +710,8 @@ export function PolicyGovernancePane({
                       >
                         <DSText
                           variant="micro"
-                          weight="bold"
+                          weight="semibold"
                           tone="tertiary"
-                          uppercase
                           style={{ marginBottom: theme.spacing.xs }}
                         >
                           Current (Acc {sample.originalScores.accuracy} · Read{' '}
@@ -721,14 +742,13 @@ export function PolicyGovernancePane({
                       >
                         <DSText
                           variant="micro"
-                          weight="bold"
+                          weight="semibold"
                           tone="accent"
-                          uppercase
                           style={{ marginBottom: theme.spacing.xs }}
                         >
                           Candidate (Acc {sample.candidateScores.accuracy} · Read{' '}
                           {sample.candidateScores.readability} ·{' '}
-                          {sample.candidatePass ? 'PASS' : 'REVIEW'})
+                          {sample.candidatePass ? 'Pass' : 'Review'})
                         </DSText>
                         <DSText
                           variant="caption"
@@ -828,7 +848,6 @@ export function PolicyGovernancePane({
             )}
           </View>
         </DSCard>
-      </View>
-    </ScrollView>
+    </View>
   );
 }

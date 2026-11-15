@@ -18,6 +18,14 @@ const FONT_STYLESHEETS: Array<{ id: string; href: string }> = [
     id: 'cabinet-grotesk-font',
     href: 'https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap',
   },
+  {
+    id: 'bricolage-grotesque-font',
+    href: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap',
+  },
+  {
+    id: 'plus-jakarta-sans-font',
+    href: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..700&display=swap',
+  },
 ];
 
 export default function RootLayout() {

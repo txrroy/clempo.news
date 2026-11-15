@@ -17,5 +17,9 @@ body {
 
 .consumer-mobile-reader,
 .consumer-mobile-reader * {
-  font-family: 'Work Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.consumer-display {
+  font-family: 'Bricolage Grotesque', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }

@@ -1,9 +1,15 @@
-import Parser from 'rss-parser';
-import * as cheerio from 'cheerio';
 import { GoogleGenAI, Type } from '@google/genai';
+import * as cheerio from 'cheerio';
+import Parser from 'rss-parser';
 import { PIPELINE_CONFIG, RSS_SOURCES, type RssSource } from '../config';
 import { withGeminiRetry } from '../lib/retry';
-import type { FetchedArticle, PolicySettings, RawRssItem, SelectedStory } from '../types';
+import type {
+  DuplicateClusterGroup,
+  FetchedArticle,
+  PolicySettings,
+  RawRssItem,
+  SelectedStory,
+} from '../types';
 
 const rssParser = new Parser({
   timeout: PIPELINE_CONFIG.fetchTimeoutMs,
@@ -28,14 +34,13 @@ function normalizeTokens(title: string): Set<string> {
   return new Set(words);
 }
 
-export function isSameEvent(a: RawRssItem, b: RawRssItem): boolean {
-  if (a.link === b.link) return true;
-  const titleA = a.title.toLowerCase().trim();
-  const titleB = b.title.toLowerCase().trim();
-  if (titleA === titleB) return true;
+export function isSameTitle(titleA: string, titleB: string): boolean {
+  const normA = titleA.toLowerCase().trim();
+  const normB = titleB.toLowerCase().trim();
+  if (normA === normB) return true;
 
-  const tokensA = normalizeTokens(a.title);
-  const tokensB = normalizeTokens(b.title);
+  const tokensA = normalizeTokens(titleA);
+  const tokensB = normalizeTokens(titleB);
   if (tokensA.size < 3 || tokensB.size < 3) return false;
 
   let shared = 0;
@@ -48,23 +53,39 @@ export function isSameEvent(a: RawRssItem, b: RawRssItem): boolean {
   return shared >= 3 && jaccard >= 0.45;
 }
 
+export function isSameEvent(a: RawRssItem, b: RawRssItem): boolean {
+  if (a.link === b.link) return true;
+  return isSameTitle(a.title, b.title);
+}
+
 function isGoogleNewsUrl(url: string): boolean {
   return url.startsWith('https://news.google.com/');
 }
 
+export interface RssFetchResult {
+  candidates: RawRssItem[];
+  rawHeadlinesCount: number;
+  mergedEventsCount: number;
+  enabledFeedsCount: number;
+  succeededFeeds: string[];
+  failedFeeds: { name: string; error: string }[];
+  duplicateGroups: DuplicateClusterGroup[];
+}
+
 /**
- * Fetches items from all enabled RSS feeds and deduplicates events while
- * tracking outlet count, source names, and alternate URLs.
+ * Fetches items from all enabled RSS feeds, deduplicates events while
+ * tracking outlet count, source names, and alternate URLs, and returns
+ * Step 1 funnel metrics.
  */
-export async function fetchRssCandidates(
+export async function fetchRssCandidatesWithStats(
   sources: RssSource[] = RSS_SOURCES
-): Promise<RawRssItem[]> {
+): Promise<RssFetchResult> {
   const enabledSources = sources.filter((s) => s.enabled);
 
   const results = await Promise.allSettled(
     enabledSources.map(async (source) => {
       const feed = await rssParser.parseURL(source.url);
-      return (feed.items || [])
+      const items = (feed.items || [])
         .slice(0, PIPELINE_CONFIG.maxItemsPerFeed)
         .map((item): RawRssItem | null => {
           const link = item.link?.trim();
@@ -86,25 +107,47 @@ export async function fetchRssCandidates(
             alternate_urls: [],
           };
         });
+      return { sourceName: source.name, items };
     })
   );
 
   const candidates: RawRssItem[] = [];
+  const duplicateMap = new Map<
+    RawRssItem,
+    { title: string; source: string }[]
+  >();
+  const succeededFeeds: string[] = [];
+  const failedFeeds: { name: string; error: string }[] = [];
+  let rawHeadlinesCount = 0;
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    const sourceName = enabledSources[i]?.name ?? 'Unknown';
     if (result.status !== 'fulfilled') {
-      console.warn('RSS feed fetch failed:', result.reason);
+      const msg =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      console.warn(`RSS feed fetch failed (${sourceName}):`, msg);
+      failedFeeds.push({ name: sourceName, error: msg });
       continue;
     }
 
-    for (const item of result.value) {
+    succeededFeeds.push(result.value.sourceName);
+
+    for (const item of result.value.items) {
       if (!item) continue;
+      rawHeadlinesCount += 1;
 
       const existing = candidates.find((c) => isSameEvent(c, item));
       if (!existing) {
         candidates.push(item);
         continue;
       }
+
+      const dupList = duplicateMap.get(existing) ?? [];
+      dupList.push({ title: item.title, source: item.source });
+      duplicateMap.set(existing, dupList);
 
       if (!existing.source_names.includes(item.source)) {
         existing.source_names.push(item.source);
@@ -134,18 +177,91 @@ export async function fetchRssCandidates(
     }
   }
 
-  return candidates;
+  const duplicateGroups: DuplicateClusterGroup[] = Array.from(
+    duplicateMap.entries()
+  )
+    .slice(0, 30)
+    .map(([kept, duplicates]) => ({
+      kept_title: kept.title,
+      kept_source: kept.source,
+      duplicates,
+    }));
+
+  return {
+    candidates,
+    rawHeadlinesCount,
+    mergedEventsCount: candidates.length,
+    enabledFeedsCount: enabledSources.length,
+    succeededFeeds,
+    failedFeeds,
+    duplicateGroups,
+  };
 }
 
 /**
- * Uses Gemini to rank deduped candidates by global impact (including source_count)
- * and select up to 20 stories while enforcing safety and topic/region diversity caps.
+ * Fetches items from all enabled RSS feeds and deduplicates events while
+ * tracking outlet count, source names, and alternate URLs.
  */
-export async function selectTopImpactStories(
+export async function fetchRssCandidates(
+  sources: RssSource[] = RSS_SOURCES
+): Promise<RawRssItem[]> {
+  const res = await fetchRssCandidatesWithStats(sources);
+  return res.candidates;
+}
+
+function normalizeStoryTags(
+  topic: string,
+  region: string,
+  rawTags?: unknown
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const addTag = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(trimmed);
+  };
+
+  if (Array.isArray(rawTags)) {
+    for (const item of rawTags) {
+      addTag(item);
+      if (result.length >= 3) break;
+    }
+  }
+
+  if (result.length === 0) addTag(topic);
+  if (result.length < 2 && region.toLowerCase() !== 'global') addTag(region);
+  if (result.length < 2) addTag(region);
+
+  return result.slice(0, 3);
+}
+
+export interface DroppedCandidateLog {
+  title: string;
+  source: string;
+  source_count: number;
+  drop_reason: string;
+}
+
+export interface SelectionWithLogResult {
+  selected: SelectedStory[];
+  droppedCandidates: DroppedCandidateLog[];
+}
+
+/**
+ * Uses Gemini to rank deduped candidates by global impact (including source_count),
+ * select up to 20 stories while enforcing safety and topic/region diversity caps,
+ * and return a sample of dropped/excluded candidates with reasons.
+ */
+export async function selectTopImpactStoriesWithLog(
   ai: GoogleGenAI,
   candidates: RawRssItem[],
   policySettings?: PolicySettings
-): Promise<SelectedStory[]> {
+): Promise<SelectionWithLogResult> {
   const maxPerTopic = policySettings?.max_per_topic ?? PIPELINE_CONFIG.maxPerTopic;
   const maxPerRegion = policySettings?.max_per_region ?? PIPELINE_CONFIG.maxPerRegion;
   const maxMarketStories = policySettings?.max_market_stories ?? PIPELINE_CONFIG.maxMarketStories;
@@ -160,21 +276,24 @@ export async function selectTopImpactStories(
     )
     .join('\n');
 
+  const droppedCandidates: DroppedCandidateLog[] = [];
+
   try {
     const response = await withGeminiRetry('Agent 1 (Fetcher filter)', () =>
       ai.models.generateContent({
         model: PIPELINE_CONFIG.geminiModel,
         contents: [
-          'You are an objective news editor selecting stories for a global daily briefing for all ages (including Grade 6 readers).',
-          `From the deduped list below, rank by global impact and multi-outlet coverage (outlets count), and select up to ${PIPELINE_CONFIG.targetArticles} stories.`,
-          'Strict selection rules:',
+          'You are an objective news editor ranking stories for a global daily briefing for all ages (including Grade 6 readers).',
+          `From the deduped list below, rank the top 45 eligible stories from highest to lowest global impact and multi-outlet coverage (outlets count). We need a deep ranked pool of up to 45 stories so our code can walk down the list, apply topic/region/market caps deterministically, and fill all ${PIPELINE_CONFIG.targetArticles} edition slots.`,
+          'Hard exclusions (do NOT include these in "picks"):',
           '- EXCLUDE any story whose main subject is sexual violence, suicide, or graphic crime.',
           '- Discard celebrity gossip, sports scores, clickbait, and trivial lifestyle pieces.',
-          `- Allow at most ${maxMarketStories} market or stock-market update story (tag its topic as "Markets").`,
           '- Avoid duplicate coverage of the exact same event.',
-          `- Cap each topic (e.g., Politics, Economy, Markets, Climate, Conflict, Science, Health, Society) at ${maxPerTopic} stories.`,
-          `- Cap each region (e.g., Asia, Europe, Middle East, Africa, Americas, Global) at ${maxPerRegion} stories.`,
-          '- For each selected story, return: index (integer), topic (short label), region (short label), sensitive (boolean: true if it involves war, disaster, death, or violence), and reason (1 concise sentence explaining why this story matters).',
+          'Important:',
+          '- Do NOT stop early or filter out stories for topic, region, or Markets caps yourself — include all eligible high-impact stories in "picks" (up to 45) so our code can enforce those caps while filling 20 slots.',
+          '- Tag market/stock-market update stories with topic "Markets".',
+          '- For each ranked story in "picks", return: index (integer), topic (short broad label, e.g. Politics, Economy, Markets, Climate, Conflict, Science, Health, Society, Disaster, Technology), region (short macro region: Asia, Europe, Middle East, Africa, Americas, Global), tags (array of 2 to 3 short specific tags combining topic + country/region + subject), sensitive (boolean: true if it involves war, disaster, death, or violence), and reason (1 concise sentence explaining why this story matters).',
+          '- Also return "skipped": up to 8 notable excluded candidates (index + short drop_reason such as "Child-safety exclusion", "Celebrity/sports/clickbait", or "Duplicate event").',
           '',
           indexedList,
         ].join('\n'),
@@ -192,10 +311,25 @@ export async function selectTopImpactStories(
                     index: { type: Type.INTEGER },
                     topic: { type: Type.STRING },
                     region: { type: Type.STRING },
+                    tags: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
                     sensitive: { type: Type.BOOLEAN },
                     reason: { type: Type.STRING },
                   },
-                  required: ['index', 'topic', 'region', 'sensitive', 'reason'],
+                  required: ['index', 'topic', 'region', 'tags', 'sensitive', 'reason'],
+                },
+              },
+              skipped: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    index: { type: Type.INTEGER },
+                    drop_reason: { type: Type.STRING },
+                  },
+                  required: ['index', 'drop_reason'],
                 },
               },
             },
@@ -210,8 +344,13 @@ export async function selectTopImpactStories(
         index: number;
         topic: string;
         region: string;
+        tags?: string[];
         sensitive: boolean;
         reason?: string;
+      }>;
+      skipped?: Array<{
+        index: number;
+        drop_reason: string;
       }>;
     };
 
@@ -231,6 +370,7 @@ export async function selectTopImpactStories(
         continue;
       }
 
+      const candidate = sortedCandidates[pick.index];
       const topic = (pick.topic || 'World').trim();
       const region = (pick.region || 'Global').trim();
       const topicKey = topic.toLowerCase();
@@ -238,12 +378,30 @@ export async function selectTopImpactStories(
       const isMarket = topicKey === 'markets' || topicKey === 'market';
 
       if (isMarket && marketCount >= maxMarketStories) {
+        droppedCandidates.push({
+          title: candidate.title,
+          source: candidate.source,
+          source_count: candidate.source_count,
+          drop_reason: `Markets cap reached (max ${maxMarketStories})`,
+        });
         continue;
       }
       if ((topicCounts.get(topicKey) ?? 0) >= maxPerTopic) {
+        droppedCandidates.push({
+          title: candidate.title,
+          source: candidate.source,
+          source_count: candidate.source_count,
+          drop_reason: `${topic} topic cap reached (max ${maxPerTopic})`,
+        });
         continue;
       }
       if ((regionCounts.get(regionKey) ?? 0) >= maxPerRegion) {
+        droppedCandidates.push({
+          title: candidate.title,
+          source: candidate.source,
+          source_count: candidate.source_count,
+          drop_reason: `${region} region cap reached (max ${maxPerRegion})`,
+        });
         continue;
       }
 
@@ -253,9 +411,10 @@ export async function selectTopImpactStories(
       regionCounts.set(regionKey, (regionCounts.get(regionKey) ?? 0) + 1);
 
       selected.push({
-        ...sortedCandidates[pick.index],
+        ...candidate,
         topic,
         region,
+        tags: normalizeStoryTags(topic, region, pick.tags),
         sensitive: Boolean(pick.sensitive),
         reason: (pick.reason || 'High global impact.').trim(),
       });
@@ -265,20 +424,59 @@ export async function selectTopImpactStories(
       }
     }
 
+    for (const skip of parsed.skipped || []) {
+      if (
+        !Number.isInteger(skip.index) ||
+        skip.index < 0 ||
+        skip.index >= sortedCandidates.length ||
+        seenIndices.has(skip.index)
+      ) {
+        continue;
+      }
+      const candidate = sortedCandidates[skip.index];
+      droppedCandidates.push({
+        title: candidate.title,
+        source: candidate.source,
+        source_count: candidate.source_count,
+        drop_reason: (skip.drop_reason || 'Not selected').trim(),
+      });
+      if (droppedCandidates.length >= 15) break;
+    }
+
     if (selected.length > 0) {
-      return selected;
+      return {
+        selected,
+        droppedCandidates: droppedCandidates.slice(0, 10),
+      };
     }
   } catch (err) {
     console.error('Agent 1 (Fetcher filter) LLM call failed, using fallback slice:', err);
   }
 
-  return sortedCandidates.slice(0, PIPELINE_CONFIG.targetArticles).map((item) => ({
-    ...item,
-    topic: 'World',
-    region: 'Global',
-    sensitive: false,
-    reason: 'Selected by outlet count fallback.',
-  }));
+  return {
+    selected: sortedCandidates.slice(0, PIPELINE_CONFIG.targetArticles).map((item) => ({
+      ...item,
+      topic: 'World',
+      region: 'Global',
+      tags: ['World', 'Global'],
+      sensitive: false,
+      reason: 'Selected by outlet count fallback.',
+    })),
+    droppedCandidates: [],
+  };
+}
+
+/**
+ * Uses Gemini to rank deduped candidates by global impact (including source_count)
+ * and select up to 20 stories while enforcing safety and topic/region diversity caps.
+ */
+export async function selectTopImpactStories(
+  ai: GoogleGenAI,
+  candidates: RawRssItem[],
+  policySettings?: PolicySettings
+): Promise<SelectedStory[]> {
+  const res = await selectTopImpactStoriesWithLog(ai, candidates, policySettings);
+  return res.selected;
 }
 
 async function resolveGoogleNewsUrl(googleNewsUrl: string): Promise<string> {

@@ -4,17 +4,19 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   extractFullArticle,
-  fetchRssCandidates,
-  selectTopImpactStories,
+  fetchRssCandidatesWithStats,
+  isSameTitle,
+  selectTopImpactStoriesWithLog,
 } from './agents/fetcher';
 import { judgeArticle } from './agents/judge';
 import { summarizeArticle } from './agents/summarizer';
 import {
-  getExistingArticleUrls,
+  getExistingDedupeContext,
   initFirebaseAdmin,
   loadActivePolicy,
   loadRssSources,
   saveDraftArticles,
+  savePipelineRunLog,
 } from './lib/firebase';
 import { sleep } from './lib/retry';
 import { buildInstructionsSnapshot } from './policy';
@@ -55,16 +57,20 @@ async function runPipeline() {
 
   // Agent 1: Fetch all enabled RSS feeds, dedupe events, select top 20 by global impact, and scrape full text
   const fetchStart = Date.now();
-  const existingUrls = await getExistingArticleUrls(db, today);
-  const allCandidates = await fetchRssCandidates(sources);
+  const [existing, rssResult] = await Promise.all([
+    getExistingDedupeContext(db),
+    fetchRssCandidatesWithStats(sources),
+  ]);
+  const allCandidates = rssResult.candidates;
   const candidates = allCandidates.filter(
     (item) =>
-      !existingUrls.has(item.link) &&
-      !(item.alternate_urls ?? []).some((u) => existingUrls.has(u))
+      !existing.urls.has(item.link) &&
+      !(item.alternate_urls ?? []).some((u) => existing.urls.has(u)) &&
+      !existing.recentHeadlines.some((h) => isSameTitle(h, item.title))
   );
   const fetchDurationMs = Date.now() - fetchStart;
   console.log(
-    `Fetched ${allCandidates.length} deduped RSS event candidates (${allCandidates.length - candidates.length} already in Firestore for ${today}).`
+    `Fetched ${rssResult.rawHeadlinesCount} headlines -> ${allCandidates.length} unique events (${allCandidates.length - candidates.length} already in Firestore).`
   );
 
   if (candidates.length === 0) {
@@ -74,11 +80,12 @@ async function runPipeline() {
 
   const selectStart = Date.now();
   console.log('Calling Agent 1 (Fetcher filter) via Gemini...');
-  const topStories = await selectTopImpactStories(
-    ai,
-    candidates,
-    activePolicy.settings
-  );
+  const { selected: topStories, droppedCandidates } =
+    await selectTopImpactStoriesWithLog(
+      ai,
+      candidates,
+      activePolicy.settings
+    );
   const selectDurationMs = Date.now() - selectStart;
   console.log(`Selected ${topStories.length} top stories for full-text extraction.`);
 
@@ -88,7 +95,7 @@ async function runPipeline() {
   );
   const extractDurationMs = Date.now() - extractStart;
   const fetchedArticles = rawFetchedArticles.filter(
-    (article) => !existingUrls.has(article.link)
+    (article) => !existing.urls.has(article.link)
   );
   const fallbackCount = fetchedArticles.filter((a) => a.usedFallbackSnippet).length;
   console.log(
@@ -219,6 +226,12 @@ async function runPipeline() {
       },
     ];
 
+    const canAutoPublish =
+      Boolean(activePolicy.settings.auto_publish_ready) &&
+      judgment.pass === true &&
+      (judgment.flags ?? []).length === 0 &&
+      !article.usedFallbackSnippet;
+
     drafts.push({
       id: randomUUID(),
       date: today,
@@ -239,12 +252,14 @@ async function runPipeline() {
       alternate_urls: article.alternate_urls,
       topic: article.topic,
       region: article.region,
+      tags: article.tags,
       sensitive: article.sensitive,
       selection_reason: article.reason,
       used_fallback_snippet: article.usedFallbackSnippet,
       auto_retried_complexity: autoRetriedComplexity,
-      status: 'draft',
-      approved_by: null,
+      status: canAutoPublish ? 'published' : 'draft',
+      approved_by: canAutoPublish ? 'auto-policy' : null,
+      approved_at: canAutoPublish ? nowIso : undefined,
       prompt_version: activePolicy.active_version,
       instructions_snapshot: instructionsSnapshot,
       pipeline_trace: pipelineTrace,
@@ -256,6 +271,44 @@ async function runPipeline() {
   }
 
   const savedCount = await saveDraftArticles(db, drafts);
+  const fullTextCount = drafts.filter((d) => !d.used_fallback_snippet).length;
+  const snippetCount = drafts.length - fullTextCount;
+  const readyCount = drafts.filter((d) => d.judge_pass === true).length;
+  const couldNotVerifyCount = drafts.filter(
+    (d) =>
+      d.used_fallback_snippet ||
+      (d.flags ?? []).includes('SNIPPET_ONLY')
+  ).length;
+  const needsCheckCount = Math.max(
+    0,
+    drafts.length - readyCount - couldNotVerifyCount
+  );
+
+  await savePipelineRunLog(db, {
+    id: randomUUID(),
+    date: today,
+    at: new Date().toISOString(),
+    enabled_feeds_count: rssResult.enabledFeedsCount,
+    succeeded_feeds: rssResult.succeededFeeds,
+    failed_feeds: rssResult.failedFeeds,
+    raw_headlines_count: rssResult.rawHeadlinesCount,
+    merged_events_count: rssResult.mergedEventsCount,
+    new_candidates_count: candidates.length,
+    already_seen_count: Math.max(
+      0,
+      allCandidates.length - candidates.length
+    ),
+    duplicate_groups: rssResult.duplicateGroups,
+    dropped_candidates: droppedCandidates,
+    picked_count: drafts.length,
+    target_count: 20,
+    full_text_count: fullTextCount,
+    snippet_fallback_count: snippetCount,
+    ready_count: readyCount,
+    needs_check_count: needsCheckCount,
+    could_not_verify_count: couldNotVerifyCount,
+  });
+
   console.log(`Pipeline complete. Saved ${savedCount} draft articles for ${today}.`);
 }
 

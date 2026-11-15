@@ -10,14 +10,14 @@ interface DSThemeContextValue {
 }
 
 const DSThemeContext = createContext<DSThemeContextValue>({
-  theme: THEMES['apple-hig'],
-  themeId: 'apple-hig',
+  theme: THEMES['warm-editorial'],
+  themeId: 'warm-editorial',
   setThemeId: () => {},
   toggleTheme: () => {},
 });
 
 export function DSThemeProvider({
-  initialTheme = 'apple-hig',
+  initialTheme = 'warm-editorial',
   children,
 }: {
   initialTheme?: ThemeId;
@@ -31,7 +31,9 @@ export function DSThemeProvider({
       themeId,
       setThemeId,
       toggleTheme: () =>
-        setThemeId((prev) => (prev === 'apple-hig' ? 'dark' : 'apple-hig')),
+        setThemeId((prev) =>
+          prev === 'warm-editorial' ? 'dark' : 'warm-editorial'
+        ),
     }),
     [themeId]
   );
@@ -82,7 +84,7 @@ export function ThemeToggleButton() {
           color: theme.colors.textSecondary,
         }}
       >
-        {isDark ? 'Charcoal' : 'Daylight'}
+        {isDark ? 'Charcoal' : 'Warm Editorial'}
       </Text>
     </Pressable>
   );

@@ -18,6 +18,7 @@ import type {
   FlagAutonomyConfig,
   JudgeClaim,
   JudgeScores,
+  PipelineRunLog,
   PipelineTraceStep,
   PolicySettings,
   PolicyVersion,
@@ -41,6 +42,7 @@ export const DEFAULT_POLICY_SETTINGS: PolicySettings = {
   max_per_topic: 4,
   max_per_region: 5,
   max_market_stories: 1,
+  auto_publish_ready: false,
   flag_autonomy: DEFAULT_FLAG_AUTONOMY,
 };
 
@@ -220,7 +222,6 @@ export function useAgentPolicy(enabled = true) {
 
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
       return;
     }
 
@@ -368,7 +369,7 @@ export function useAgentPolicy(enabled = true) {
   return {
     activePolicy,
     versions,
-    loading,
+    loading: enabled ? loading : false,
     error,
     savePolicyVersion,
     rollbackToVersion,
@@ -383,7 +384,6 @@ export function useSourcesConfig(enabled = true) {
 
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
       return;
     }
 
@@ -465,7 +465,7 @@ export function useSourcesConfig(enabled = true) {
 
   return {
     sources,
-    loading,
+    loading: enabled ? loading : false,
     error,
     toggleSource,
     addSource,
@@ -522,5 +522,31 @@ export async function sendAgentChatMessage(params: {
     throw new Error(data.error || 'Failed to message agent');
   }
   return (data.reply as string) || 'Instruction received.';
+}
+
+export function useLatestPipelineRun(enabled = true) {
+  const [latestRunLog, setLatestRunLog] = useState<PipelineRunLog | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const unsub = onSnapshot(
+      doc(db, 'config', 'latest_pipeline_run'),
+      (snap) => {
+        if (snap.exists()) {
+          setLatestRunLog(snap.data() as PipelineRunLog);
+        } else {
+          setLatestRunLog(null);
+        }
+      },
+      (err) => {
+        console.warn('config/latest_pipeline_run listener error:', err);
+      }
+    );
+
+    return unsub;
+  }, [enabled]);
+
+  return latestRunLog;
 }
 

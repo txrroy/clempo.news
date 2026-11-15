@@ -38,15 +38,15 @@ export function DSCard({
       style={[
         {
           backgroundColor: muted
-            ? theme.colors.surfaceHeader
+            ? theme.colors.surfaceMuted
             : elevated
               ? theme.colors.surfaceElevated
               : theme.colors.surface,
-          borderRadius: theme.radii.lg,
+          borderRadius: theme.radii.md,
           borderWidth: theme.cardBorderWidth,
-          borderColor: theme.colors.borderSubtle,
+          borderColor: theme.colors.borderDefault,
           overflow: 'hidden',
-          ...(elevated ? theme.shadows.elevated : theme.shadows.card),
+          ...theme.shadows.card,
         },
         style,
       ]}
@@ -66,7 +66,7 @@ export function DSCard({
         >
           <View style={{ flex: 1 }}>
             {headerTitle ? (
-              <DSText variant="subhead" weight="bold" tone="primary">
+              <DSText variant="headline" weight="semibold" tone="primary">
                 {headerTitle}
               </DSText>
             ) : null}

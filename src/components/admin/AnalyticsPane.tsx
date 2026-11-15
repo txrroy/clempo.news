@@ -1,6 +1,15 @@
 import { useMemo } from 'react';
-import { View, ScrollView } from 'react-native';
-import { useDSTheme, DSCard, DSText, DSSurface } from '@/design-system';
+import { View } from 'react-native';
+import {
+  DSBadge,
+  DSSectionHeader,
+  DSStatTile,
+  DSTable,
+  DSTableHeader,
+  DSTableRow,
+  DSText,
+  useDSTheme,
+} from '@/design-system';
 import type { Article } from '@/types/article';
 
 interface AnalyticsPaneProps {
@@ -100,158 +109,106 @@ export function AnalyticsPane({ articles }: AnalyticsPaneProps) {
   }, [articles]);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.colors.canvas }}
-      contentContainerStyle={{
-        padding: theme.spacing.xxl,
-        paddingBottom: theme.spacing.xxxl,
-      }}
-    >
-      <View
-        style={{
-          maxWidth: theme.layout.contentMaxWidth,
-          width: '100%',
-          alignSelf: 'center',
-          gap: theme.spacing.xl,
-        }}
-      >
-        <View>
-          <DSText variant="title3" weight="bold" tone="primary">
-            Approval Rate per Prompt Version
-          </DSText>
-          <DSText
-            variant="caption"
-            tone="secondary"
-            style={{ marginTop: theme.spacing.xxs }}
-          >
-            Human editor decisions become evaluation metrics for each policy
-            version.
-          </DSText>
-        </View>
+    <View style={{ gap: theme.spacing.xl }}>
+      <DSSectionHeader
+        title="Approval Rate by Prompt Version"
+        subtitle="Human editor decisions become evaluation metrics for each policy version."
+      />
+      {/* Top KPI Tiles */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.lg }}>
+        <DSStatTile
+          label="Overall Approval Rate"
+          value={totals.overallRate !== null ? `${totals.overallRate}%` : '—'}
+          hint="Across decided stories"
+        />
+        <DSStatTile
+          label="Published"
+          value={totals.published}
+          right={<DSBadge label="Approved" tone="success" />}
+        />
+        <DSStatTile
+          label="Pending"
+          value={totals.pending}
+          right={<DSBadge label="In Review" tone="warning" />}
+        />
+        <DSStatTile
+          label="Rejected"
+          value={totals.rejected}
+          right={<DSBadge label="Rejected" tone="danger" />}
+        />
+        <DSStatTile
+          label="Total Audited"
+          value={totals.total}
+          hint="All prompt versions"
+        />
+      </View>
 
-        {/* Cohesive Editorial Summary Strip */}
-        <DSSurface
-          variant="surface"
-          radius="lg"
-          bordered
-          style={[
-            theme.shadows.card,
-            {
-              padding: theme.spacing.xl,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: theme.spacing.xl,
-            },
-          ]}
-        >
-          <View style={{ minWidth: 160 }}>
-            <DSText variant="micro" weight="bold" tone="tertiary" uppercase>
-              Overall Approval Rate
-            </DSText>
-            <DSText
-              variant="display"
-              weight="bold"
-              tone="accent"
-              tabularNums
-              style={{ marginTop: theme.spacing.xxs }}
-            >
-              {totals.overallRate !== null ? `${totals.overallRate}%` : '—'}
+      {/* Version Breakdown Table */}
+      <DSTable>
+        <DSTableHeader>
+          <View style={{ flex: 1.4, minWidth: 160 }}>
+            <DSText variant="micro" weight="semibold" tone="tertiary">
+              Policy Version
             </DSText>
           </View>
-
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              gap: theme.spacing.xxl,
-            }}
-          >
-            {[
-              { label: 'Published', value: totals.published, tone: 'success' as const },
-              { label: 'Rejected', value: totals.rejected, tone: 'danger' as const },
-              { label: 'Pending', value: totals.pending, tone: 'warning' as const },
-              { label: 'Total Audited', value: totals.total, tone: 'primary' as const },
-            ].map((item) => (
-              <View key={item.label}>
-                <DSText variant="micro" weight="semibold" tone="tertiary">
-                  {item.label}
-                </DSText>
-                <DSText
-                  variant="title2"
-                  weight="bold"
-                  tone={item.tone}
-                  tabularNums
-                  style={{ marginTop: 2 }}
-                >
-                  {item.value}
-                </DSText>
-              </View>
-            ))}
+          <View style={{ flex: 2, minWidth: 200 }}>
+            <DSText variant="micro" weight="semibold" tone="tertiary">
+              Approval Distribution
+            </DSText>
           </View>
-        </DSSurface>
+          <View style={{ width: 96 }}>
+            <DSText variant="micro" weight="semibold" tone="tertiary">
+              Avg Accuracy
+            </DSText>
+          </View>
+          <View style={{ width: 96 }}>
+            <DSText variant="micro" weight="semibold" tone="tertiary">
+              Avg Safety
+            </DSText>
+          </View>
+          <View style={{ width: 120, alignItems: 'flex-end' }}>
+            <DSText variant="micro" weight="semibold" tone="tertiary">
+              Edited / Regen
+            </DSText>
+          </View>
+        </DSTableHeader>
 
-        {/* Version Breakdown */}
-        <DSCard headerTitle="Version Comparison" padding="lg">
-          <View style={{ gap: theme.spacing.md }}>
-            {stats.length === 0 ? (
-              <DSText variant="caption" tone="tertiary">
-                No articles available yet to compute approval rates.
-              </DSText>
-            ) : (
-              stats.map((row) => {
-                const rate = row.approvalRate ?? 0;
-                return (
-                  <DSSurface
-                    key={row.version}
-                    variant="muted"
-                    radius="md"
-                    bordered
+        {stats.length === 0 ? (
+          <View style={{ padding: theme.spacing.xxl, alignItems: 'center' }}>
+            <DSText variant="caption" tone="tertiary">
+              No articles available yet to compute approval rates.
+            </DSText>
+          </View>
+        ) : (
+          stats.map((row, idx) => {
+            const rate = row.approvalRate ?? 0;
+            return (
+              <DSTableRow key={row.version} isLast={idx === stats.length - 1}>
+                <View style={{ flex: 1.4, minWidth: 160, gap: theme.spacing.xxs }}>
+                  <DSText variant="body" weight="semibold" tone="primary">
+                    {row.version}
+                  </DSText>
+                  <DSText variant="caption" tone="tertiary" tabularNums>
+                    {row.total} total · {row.published} approved · {row.rejected} rejected · {row.pending} pending
+                  </DSText>
+                </View>
+
+                <View style={{ flex: 2, minWidth: 200, gap: theme.spacing.xs }}>
+                  <View
                     style={{
-                      padding: theme.spacing.lg,
-                      gap: theme.spacing.sm,
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                     }}
                   >
                     <View
                       style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: theme.spacing.sm,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: theme.spacing.sm,
-                        }}
-                      >
-                        <DSText variant="body" weight="bold" tone="primary">
-                          {row.version}
-                        </DSText>
-                        <DSText variant="caption" tone="secondary">
-                          {row.total} total ({row.published} approved ·{' '}
-                          {row.rejected} rejected · {row.pending} pending)
-                        </DSText>
-                      </View>
-                      <DSText variant="body" weight="bold" tone="accent">
-                        {row.approvalRate !== null
-                          ? `${row.approvalRate}% approval`
-                          : 'No decisions yet'}
-                      </DSText>
-                    </View>
-
-                    {/* Horizontal Progress Bar */}
-                    <View
-                      style={{
-                        height: theme.spacing.sm + 2,
-                        width: '100%',
-                        backgroundColor: theme.colors.borderSubtle,
+                        flex: 1,
+                        height: 6,
                         borderRadius: theme.radii.pill,
+                        backgroundColor: theme.colors.surfaceMuted,
                         overflow: 'hidden',
+                        marginRight: theme.spacing.md,
                       }}
                     >
                       <View
@@ -259,38 +216,42 @@ export function AnalyticsPane({ articles }: AnalyticsPaneProps) {
                           width: `${rate}%`,
                           height: '100%',
                           backgroundColor: theme.colors.accent,
-                          borderRadius: theme.radii.pill,
                         }}
                       />
                     </View>
-
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        gap: theme.spacing.md,
-                      }}
+                    <DSText
+                      variant="caption"
+                      weight="semibold"
+                      tone={row.approvalRate !== null ? 'primary' : 'tertiary'}
+                      tabularNums
                     >
-                      <DSText variant="caption" weight="medium" tone="secondary">
-                        Avg Accuracy: {row.avgAccuracy}
-                      </DSText>
-                      <DSText variant="caption" weight="medium" tone="secondary">
-                        Avg Safety: {row.avgSafety}
-                      </DSText>
-                      <DSText variant="caption" weight="medium" tone="secondary">
-                        Human Edited: {row.editedCount}
-                      </DSText>
-                      <DSText variant="caption" weight="medium" tone="secondary">
-                        Regenerated: {row.regeneratedCount}
-                      </DSText>
-                    </View>
-                  </DSSurface>
-                );
-              })
-            )}
-          </View>
-        </DSCard>
-      </View>
-    </ScrollView>
+                      {row.approvalRate !== null ? `${row.approvalRate}%` : '—'}
+                    </DSText>
+                  </View>
+                </View>
+
+                <View style={{ width: 96 }}>
+                  <DSText variant="body" weight="semibold" tone="primary" tabularNums>
+                    {row.avgAccuracy}/100
+                  </DSText>
+                </View>
+
+                <View style={{ width: 96 }}>
+                  <DSText variant="body" weight="semibold" tone="primary" tabularNums>
+                    {row.avgSafety}/100
+                  </DSText>
+                </View>
+
+                <View style={{ width: 120, alignItems: 'flex-end' }}>
+                  <DSText variant="caption" tone="secondary" tabularNums>
+                    {row.editedCount} / {row.regeneratedCount}
+                  </DSText>
+                </View>
+              </DSTableRow>
+            );
+          })
+        )}
+      </DSTable>
+    </View>
   );
 }

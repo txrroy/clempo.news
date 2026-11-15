@@ -13,6 +13,7 @@ export interface RawRssItem {
 export interface SelectedStory extends RawRssItem {
   topic: string;
   region: string;
+  tags: string[];
   sensitive: boolean;
   reason: string;
 }
@@ -75,12 +76,24 @@ export interface PipelineTraceStep {
   details?: Record<string, string | number | boolean>;
 }
 
+export interface DuplicateClusterGroup {
+  kept_title: string;
+  kept_source: string;
+  duplicates: { title: string; source: string }[];
+}
+
 export interface PipelineRunLog {
   id: string;
   date: string;
   at: string;
+  enabled_feeds_count?: number;
+  succeeded_feeds?: string[];
+  failed_feeds?: { name: string; error: string }[];
   raw_headlines_count: number;
   merged_events_count: number;
+  new_candidates_count?: number;
+  already_seen_count?: number;
+  duplicate_groups?: DuplicateClusterGroup[];
   picked_count: number;
   target_count: number;
   full_text_count: number;
@@ -114,6 +127,7 @@ export interface PolicySettings {
   max_per_topic: number;
   max_per_region: number;
   max_market_stories: number;
+  auto_publish_ready?: boolean;
   flag_autonomy?: FlagAutonomyConfig;
 }
 
@@ -156,6 +170,7 @@ export interface ArticleDocument {
   alternate_urls: string[];
   topic: string;
   region: string;
+  tags?: string[];
   sensitive: boolean;
   selection_reason: string;
   used_fallback_snippet: boolean;

@@ -1,6 +1,6 @@
 import { fontFamilies, layout, radii, spacing, typography } from './tokens';
 
-export type ThemeId = 'apple-hig' | 'dark';
+export type ThemeId = 'warm-editorial' | 'dark';
 
 export interface SemanticTone {
   bg: string;
@@ -35,6 +35,9 @@ export interface DSColors {
   accentSoft: string;
   accentBorder: string;
   accentText: string;
+
+  disabledBg: string;
+  disabledText: string;
 
   backdrop: string;
   shadowColor: string;
@@ -76,77 +79,80 @@ export interface DSTheme {
   };
 }
 
-export const appleHigTheme: DSTheme = {
-  id: 'apple-hig',
-  name: 'Editorial',
+export const warmEditorialTheme: DSTheme = {
+  id: 'warm-editorial',
+  name: 'Warm Editorial',
   isDark: false,
   cardBorderWidth: 1,
   colors: {
-    canvas: '#FAFAF9',
-    canvasSubtle: '#F3F2EF',
+    canvas: '#FFFBF7',
+    canvasSubtle: '#F8F2EB',
     surface: '#FFFFFF',
-    surfaceHeader: '#F7F6F4',
+    surfaceHeader: '#FFFFFF',
     surfaceElevated: '#FFFFFF',
-    surfaceMuted: '#F1F0EC',
-    surfaceHover: '#EBEAE5',
-    surfaceSelected: 'rgba(184, 59, 29, 0.08)',
-    surfaceInk: '#141413',
-    topBar: '#FAFAF9',
+    surfaceMuted: '#F8F2EB',
+    surfaceHover: '#F3ECE3',
+    surfaceSelected: '#FFF0E2',
+    surfaceInk: '#1F2937',
+    topBar: '#FFFBF7',
 
-    textPrimary: '#141413',
-    textSecondary: '#4B4A46',
-    textTertiary: '#66645E',
+    textPrimary: '#1F2937',
+    textSecondary: '#4B5563',
+    textTertiary: '#6B7280',
     textInverse: '#FFFFFF',
-    inkText: '#FAFAF9',
+    inkText: '#FFFFFF',
 
-    borderSubtle: 'rgba(20, 20, 19, 0.08)',
-    borderDefault: 'rgba(20, 20, 19, 0.14)',
-    borderStrong: 'rgba(20, 20, 19, 0.24)',
+    borderSubtle: '#EFE9E1',
+    borderDefault: '#E8E1D9',
+    borderStrong: '#D6CEC5',
 
-    accent: '#B83B1D',
-    accentSoft: 'rgba(184, 59, 29, 0.08)',
-    accentBorder: 'rgba(184, 59, 29, 0.28)',
-    accentText: '#A13217',
+    accent: '#E97316',
+    accentSoft: '#FFF0E2',
+    accentBorder: '#F7C59F',
+    accentText: '#B54D09',
 
-    backdrop: 'rgba(20, 20, 19, 0.36)',
-    shadowColor: '#141413',
+    disabledBg: '#D6CEC5',
+    disabledText: '#6B7280',
+
+    backdrop: 'rgba(31, 41, 55, 0.34)',
+    shadowColor: '#1F2937',
 
     tones: {
       neutral: {
-        bg: '#F1F0EC',
-        border: 'rgba(20, 20, 19, 0.10)',
-        text: '#4B4A46',
-        dot: '#66645E',
+        bg: '#F1EFEC',
+        border: '#E8E1D9',
+        text: '#4B5563',
+        dot: '#6B7280',
       },
       accent: {
-        bg: 'rgba(184, 59, 29, 0.09)',
-        border: 'rgba(184, 59, 29, 0.28)',
-        text: '#A13217',
-        dot: '#B83B1D',
+        bg: '#FFF0E2',
+        border: '#F7C59F',
+        text: '#B54D09',
+        dot: '#E97316',
       },
       success: {
-        bg: '#F0FDF4',
-        border: 'rgba(22, 101, 52, 0.24)',
-        text: '#166534',
-        dot: '#15803D',
+        bg: '#EAF4EC',
+        border: '#CBE3D0',
+        text: '#237A45',
+        dot: '#237A45',
       },
       warning: {
-        bg: '#FFFBEB',
-        border: 'rgba(146, 64, 14, 0.26)',
-        text: '#92400E',
-        dot: '#B45309',
+        bg: '#FFF1DC',
+        border: '#F4D4A4',
+        text: '#A85B12',
+        dot: '#A85B12',
       },
       danger: {
-        bg: '#FEF2F2',
-        border: 'rgba(153, 27, 27, 0.24)',
-        text: '#991B1B',
-        dot: '#B91C1C',
+        bg: '#FDECEC',
+        border: '#F6CCCA',
+        text: '#B42318',
+        dot: '#B42318',
       },
       info: {
-        bg: '#F1F5F9',
-        border: 'rgba(51, 65, 85, 0.22)',
-        text: '#334155',
-        dot: '#475569',
+        bg: '#F1EFEC',
+        border: '#E8E1D9',
+        text: '#4B5563',
+        dot: '#6B7280',
       },
     },
   },
@@ -157,30 +163,30 @@ export const appleHigTheme: DSTheme = {
   layout,
   shadows: {
     card: {
-      shadowColor: '#181817',
-      shadowOpacity: 0.025,
-      shadowRadius: 10,
+      shadowColor: '#1F2937',
+      shadowOpacity: 0.04,
+      shadowRadius: 8,
       shadowOffset: { width: 0, height: 2 },
       elevation: 1,
     },
     elevated: {
-      shadowColor: '#181817',
-      shadowOpacity: 0.04,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 4 },
+      shadowColor: '#1F2937',
+      shadowOpacity: 0.07,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 3 },
       elevation: 2,
     },
     popover: {
-      shadowColor: '#181817',
+      shadowColor: '#1F2937',
       shadowOpacity: 0.12,
-      shadowRadius: 28,
-      shadowOffset: { width: 0, height: 12 },
-      elevation: 8,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
     },
     pill: {
-      shadowColor: '#181817',
+      shadowColor: '#1F2937',
       shadowOpacity: 0.04,
-      shadowRadius: 6,
+      shadowRadius: 3,
       shadowOffset: { width: 0, height: 1 },
       elevation: 1,
     },
@@ -218,6 +224,9 @@ export const darkTheme: DSTheme = {
     accentSoft: 'rgba(224, 108, 79, 0.16)',
     accentBorder: 'rgba(224, 108, 79, 0.34)',
     accentText: '#F08A70',
+
+    disabledBg: '#3A3834',
+    disabledText: '#78746D',
 
     backdrop: 'rgba(0, 0, 0, 0.62)',
     shadowColor: '#000000',
@@ -299,6 +308,6 @@ export const darkTheme: DSTheme = {
 };
 
 export const THEMES: Record<ThemeId, DSTheme> = {
-  'apple-hig': appleHigTheme,
+  'warm-editorial': warmEditorialTheme,
   dark: darkTheme,
 };

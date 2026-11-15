@@ -1,4 +1,4 @@
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { useDSTheme } from '../ThemeContext';
 import { DSText } from './DSText';
 
@@ -29,7 +29,7 @@ export function DSSegmentedControl<T extends string>({
         borderRadius: theme.radii.pill,
         padding: theme.spacing.xxs + 1,
         borderWidth: theme.layout.borderWidth,
-        borderColor: theme.colors.borderSubtle,
+        borderColor: theme.colors.borderDefault,
       }}
     >
       {options.map((opt) => {
@@ -43,18 +43,19 @@ export function DSSegmentedControl<T extends string>({
                 paddingHorizontal: theme.spacing.md + 2,
                 paddingVertical: theme.spacing.xs + 2,
                 borderRadius: theme.radii.pill,
-                backgroundColor: isActive
-                  ? theme.colors.surfaceElevated
-                  : 'transparent',
-                opacity: pressed ? 0.75 : 1,
+                backgroundColor: isActive ? theme.colors.accent : 'transparent',
+                opacity: pressed ? 0.85 : 1,
                 ...(isActive ? theme.shadows.pill : {}),
+                ...(Platform.OS === 'web'
+                  ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                  : {}),
               },
             ]}
           >
             <DSText
               variant="caption"
               weight={isActive ? 'semibold' : 'medium'}
-              tone={isActive ? 'primary' : 'secondary'}
+              tone={isActive ? 'inverse' : 'secondary'}
             >
               {opt.label}
             </DSText>
@@ -64,4 +65,3 @@ export function DSSegmentedControl<T extends string>({
     </View>
   );
 }
-

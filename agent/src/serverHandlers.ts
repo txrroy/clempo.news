@@ -3,16 +3,19 @@ import { getAuth } from 'firebase-admin/auth';
 import { randomUUID } from 'node:crypto';
 import {
   extractFullArticle,
-  fetchRssCandidates,
-  selectTopImpactStories,
+  fetchRssCandidatesWithStats,
+  isSameTitle,
+  selectTopImpactStoriesWithLog,
 } from './agents/fetcher';
 import { judgeArticle } from './agents/judge';
 import { summarizeArticle } from './agents/summarizer';
 import {
+  getExistingDedupeContext,
   initFirebaseAdmin,
   loadActivePolicy,
   loadRssSources,
   saveDraftArticles,
+  savePipelineRunLog,
 } from './lib/firebase';
 import {
   buildInstructionsSnapshot,
@@ -21,6 +24,7 @@ import {
 import type {
   ActivePolicyDoc,
   ArticleDocument,
+  DuplicateClusterGroup,
   FetchedArticle,
   PipelineTraceStep,
   PolicySettings,
@@ -101,6 +105,7 @@ async function buildFetchedFromDoc(
     alternate_urls: remainingAlts,
     topic: doc.topic || 'World',
     region: doc.region || 'Global',
+    tags: doc.tags && doc.tags.length > 0 ? doc.tags : [doc.topic || 'World', doc.region || 'Global'],
     sensitive: Boolean(doc.sensitive),
     reason: doc.selection_reason || '',
     fullText: tryAlternateSource ? '' : doc.source_text || '',
@@ -368,6 +373,22 @@ export async function handlePipelineStream(
     const instructionsSnapshot = buildInstructionsSnapshot(activePolicy);
 
     let targets: FetchedArticle[] = [];
+    let rssStats: {
+      rawHeadlinesCount: number;
+      mergedEventsCount: number;
+      enabledFeedsCount: number;
+      succeededFeeds: string[];
+      failedFeeds: { name: string; error: string }[];
+      newCandidatesCount: number;
+      alreadySeenCount: number;
+      duplicateGroups: DuplicateClusterGroup[];
+      droppedCandidates?: {
+        title: string;
+        source: string;
+        source_count: number;
+        drop_reason: string;
+      }[];
+    } | null = null;
 
     if (body.mode === 'single-url' && body.url?.trim()) {
       const targetUrl = body.url.trim();
@@ -392,6 +413,7 @@ export async function handlePipelineStream(
         alternate_urls: [],
         topic: 'World',
         region: 'Global',
+        tags: ['World', 'Global'],
         sensitive: false,
         reason: 'Editor-submitted URL for live multi-agent ingestion.',
         fullText: '',
@@ -417,18 +439,41 @@ export async function handlePipelineStream(
         type: 'agent1_start',
         message: `Scanning ${sources.filter((s) => s.enabled).length} enabled RSS feeds & clustering duplicate coverage...`,
       });
-      const candidates = await fetchRssCandidates(sources);
+      const [existing, rssResult] = await Promise.all([
+        getExistingDedupeContext(db),
+        fetchRssCandidatesWithStats(sources),
+      ]);
+      const rawCandidates = rssResult.candidates;
+      const candidates = rawCandidates.filter(
+        (item) =>
+          !existing.urls.has(item.link) &&
+          !(item.alternate_urls ?? []).some((u) => existing.urls.has(u)) &&
+          !existing.recentHeadlines.some((h) => isSameTitle(h, item.title))
+      );
+      rssStats = {
+        rawHeadlinesCount: rssResult.rawHeadlinesCount,
+        mergedEventsCount: rssResult.mergedEventsCount,
+        enabledFeedsCount: rssResult.enabledFeedsCount,
+        succeededFeeds: rssResult.succeededFeeds,
+        failedFeeds: rssResult.failedFeeds,
+        newCandidatesCount: candidates.length,
+        alreadySeenCount: Math.max(0, rawCandidates.length - candidates.length),
+        duplicateGroups: rssResult.duplicateGroups,
+      };
       sendEvent({
         type: 'agent1_progress',
-        message: `Clustered ${candidates.length} unique news events across outlets. Selecting top stories...`,
+        message: `Scanned ${rssResult.rawHeadlinesCount} headlines → ${rawCandidates.length} unique events (${candidates.length} new). Selecting top stories...`,
       });
-      const topStories = await selectTopImpactStories(
-        ai,
-        candidates,
-        activePolicy.settings
-      );
+      const { selected: topStories, droppedCandidates } =
+        await selectTopImpactStoriesWithLog(
+          ai,
+          candidates,
+          activePolicy.settings
+        );
+      rssStats.droppedCandidates = droppedCandidates;
       const selected = topStories.slice(0, 2);
-      targets = await Promise.all(selected.map((s) => extractFullArticle(s)));
+      const rawTargets = await Promise.all(selected.map((s) => extractFullArticle(s)));
+      targets = rawTargets.filter((t) => !existing.urls.has(t.link));
       sendEvent({
         type: 'agent1_done',
         count: targets.length,
@@ -565,6 +610,12 @@ export async function handlePipelineStream(
         },
       ];
 
+      const canAutoPublish =
+        Boolean(activePolicy.settings.auto_publish_ready) &&
+        judgment.pass === true &&
+        (judgment.flags ?? []).length === 0 &&
+        !article.usedFallbackSnippet;
+
       const doc: ArticleDocument = {
         id: randomUUID(),
         date: today,
@@ -584,6 +635,7 @@ export async function handlePipelineStream(
         alternate_urls: article.alternate_urls,
         topic: article.topic,
         region: article.region,
+        tags: article.tags,
         sensitive: article.sensitive,
         selection_reason: article.reason,
         source_text: article.fullText.slice(0, 6000),
@@ -591,10 +643,10 @@ export async function handlePipelineStream(
         prompt_version: activePolicy.active_version,
         instructions_snapshot: instructionsSnapshot,
         pipeline_trace: traceSteps,
-        status: 'draft',
-        approved_by: null,
+        status: canAutoPublish ? 'published' : 'draft',
+        approved_by: canAutoPublish ? 'auto-policy' : null,
         edited_at: null,
-        approved_at: null,
+        approved_at: canAutoPublish ? nowIso : null,
         rejected_at: null,
         decision_history: [],
       };
@@ -603,6 +655,45 @@ export async function handlePipelineStream(
 
     if (savedDrafts.length > 0) {
       await saveDraftArticles(db, savedDrafts);
+    }
+
+    if (rssStats) {
+      const fullTextCount = savedDrafts.filter(
+        (d) => !d.used_fallback_snippet
+      ).length;
+      const snippetCount = savedDrafts.length - fullTextCount;
+      const readyCount = savedDrafts.filter((d) => d.judge_pass === true).length;
+      const couldNotVerifyCount = savedDrafts.filter(
+        (d) =>
+          d.used_fallback_snippet ||
+          (d.flags ?? []).includes('SNIPPET_ONLY')
+      ).length;
+      const needsCheckCount = Math.max(
+        0,
+        savedDrafts.length - readyCount - couldNotVerifyCount
+      );
+
+      await savePipelineRunLog(db, {
+        id: randomUUID(),
+        date: today,
+        at: new Date().toISOString(),
+        enabled_feeds_count: rssStats.enabledFeedsCount,
+        succeeded_feeds: rssStats.succeededFeeds,
+        failed_feeds: rssStats.failedFeeds,
+        raw_headlines_count: rssStats.rawHeadlinesCount,
+        merged_events_count: rssStats.mergedEventsCount,
+        new_candidates_count: rssStats.newCandidatesCount,
+        already_seen_count: rssStats.alreadySeenCount,
+        duplicate_groups: rssStats.duplicateGroups,
+        dropped_candidates: rssStats.droppedCandidates,
+        picked_count: savedDrafts.length,
+        target_count: 20,
+        full_text_count: fullTextCount,
+        snippet_fallback_count: snippetCount,
+        ready_count: readyCount,
+        needs_check_count: needsCheckCount,
+        could_not_verify_count: couldNotVerifyCount,
+      });
     }
 
     sendEvent({

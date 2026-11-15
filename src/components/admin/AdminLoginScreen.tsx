@@ -105,7 +105,7 @@ export function AdminLoginScreen({
               width: 34,
               height: 34,
               borderRadius: theme.radii.pill,
-              backgroundColor: theme.colors.textPrimary,
+              backgroundColor: theme.colors.accent,
               alignItems: 'center',
               justifyContent: 'center',
             }}

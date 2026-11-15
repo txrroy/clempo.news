@@ -15,9 +15,11 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { getLocalDateKey } from '@/lib/readingStreak';
 import type { Article } from '@/types/article';
 
 const OLDER_BATCH_SIZE = 10;
+const FALLBACK_EDITION_LIMIT = 30;
 
 interface UseArticlesResult {
   articles: Article[];
@@ -51,7 +53,7 @@ export function usePublishedArticles(): UseArticlesResult {
 
     async function fetchArticles() {
       try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateKey();
         const articlesRef = collection(db, 'articles');
         const todayQuery = query(
           articlesRef,
@@ -72,11 +74,12 @@ export function usePublishedArticles(): UseArticlesResult {
           return;
         }
 
-        // Fallback: fetch most recent published articles
+        // Fallback: fetch most recent published articles (bounded to avoid scanning full archive)
         const fallbackQuery = query(
           articlesRef,
           where('status', '==', 'published'),
-          orderBy('date', 'desc')
+          orderBy('date', 'desc'),
+          limit(FALLBACK_EDITION_LIMIT)
         );
         const fallbackSnapshot = await getDocs(fallbackQuery);
 
@@ -116,21 +119,20 @@ export function usePublishedArticles(): UseArticlesResult {
     setLoadingOlder(true);
     try {
       const articlesRef = collection(db, 'articles');
+      const currentDate = articles[0]?.date;
       const olderQuery = query(
         articlesRef,
         where('status', '==', 'published'),
-        orderBy('date', 'desc')
+        ...(currentDate ? [where('date', '<', currentDate)] : []),
+        orderBy('date', 'desc'),
+        limit(FALLBACK_EDITION_LIMIT)
       );
       const snapshot = await getDocs(olderQuery);
-      const currentDate = articles[0]?.date;
       const allPublished = snapshot.docs.map((d) => ({
         ...(d.data() as Omit<Article, 'id'>),
         id: d.id,
       }));
-      const filtered = currentDate
-        ? allPublished.filter((a) => a.date !== currentDate)
-        : allPublished;
-      setOlderArticles(filtered);
+      setOlderArticles(allPublished);
       setOlderLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load older articles');
@@ -145,7 +147,7 @@ export function usePublishedArticles(): UseArticlesResult {
     try {
       const articlesRef = collection(db, 'articles');
       const currentDate =
-        articles[0]?.date ?? new Date().toISOString().split('T')[0];
+        articles[0]?.date ?? getLocalDateKey();
 
       const constraints = [
         where('status', '==', 'published'),
@@ -221,11 +223,9 @@ export function useDraftArticles(enabled = true): UseDraftArticlesResult {
 
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const articlesRef = collection(db, 'articles');
     const draftsQuery = query(articlesRef, where('status', '==', 'draft'));
 
@@ -299,7 +299,7 @@ export function useDraftArticles(enabled = true): UseDraftArticlesResult {
 
   return {
     drafts,
-    loading,
+    loading: enabled ? loading : false,
     error,
     saveChanges,
     approveArticle,
@@ -338,11 +338,9 @@ export function useAdminArticles(enabled = true): UseAdminArticlesResult {
 
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const articlesRef = collection(db, 'articles');
     const allQuery = query(articlesRef, orderBy('date', 'desc'));
 
@@ -485,7 +483,7 @@ export function useAdminArticles(enabled = true): UseAdminArticlesResult {
 
   return {
     articles,
-    loading,
+    loading: enabled ? loading : false,
     error,
     saveChanges,
     approveArticle,
