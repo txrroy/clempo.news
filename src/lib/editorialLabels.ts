@@ -1,4 +1,4 @@
-import type { Article, ArticleFlag } from '@/types/article';
+import type { Article, ArticleFlag, PipelineRunLog } from '@/types/article';
 
 export const FLAG_PLAIN_REASONS: Record<ArticleFlag, string> = {
   SNIPPET_ONLY: 'Only a snippet was available, so facts could not be checked.',
@@ -419,4 +419,52 @@ export function formatRelativeAge(isoOrDate: string | null, fallbackDate: string
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDays = Math.floor(diffHr / 24);
   return `${diffDays}d ago`;
+}
+
+export interface MissedRunNotice {
+  kind: 'never-ran' | 'missed-today';
+  title: string;
+  detail: string;
+}
+
+/**
+ * Detects when the autonomous daily pipeline has not run for the current UTC day
+ * (or is overdue by > 26 hours), so fallback edition dates never hide a missed run.
+ */
+export function getMissedRunNotice(
+  latestRunLog: PipelineRunLog | null | undefined,
+  displayedDate?: string
+): MissedRunNotice | null {
+  const actualUtcToday = new Date().toISOString().split('T')[0];
+
+  if (!latestRunLog) {
+    return {
+      kind: 'never-ran',
+      title: 'No automated pipeline run recorded yet',
+      detail: `The agent has not logged a run for ${actualUtcToday} UTC. Trigger a manual run or check the scheduled cron job.`,
+    };
+  }
+
+  const runMs = Date.parse(latestRunLog.at);
+  const ageHours = Number.isNaN(runMs)
+    ? null
+    : Math.max(0, Math.floor((Date.now() - runMs) / 3_600_000));
+  const isBeforeToday = latestRunLog.date < actualUtcToday;
+  const isOverdue = ageHours !== null && ageHours >= 26;
+
+  if (!isBeforeToday && !isOverdue) {
+    return null;
+  }
+
+  const fallbackNote =
+    displayedDate && displayedDate !== actualUtcToday
+      ? ` Showing latest available edition (${displayedDate}).`
+      : '';
+  const ageLabel = ageHours !== null ? ` (${ageHours}h ago)` : '';
+
+  return {
+    kind: 'missed-today',
+    title: `No pipeline run completed for ${actualUtcToday} UTC`,
+    detail: `Last recorded run was on ${latestRunLog.date} UTC${ageLabel}.${fallbackNote} Check cron/API health or run the pipeline manually.`,
+  };
 }

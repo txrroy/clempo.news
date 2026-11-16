@@ -6,6 +6,7 @@ import { TopicSignalIcon } from '@/components/consumer/TopicSignalIcon';
 import { TopicSignalModal } from '@/components/consumer/TopicSignalModal';
 import { APP_CONFIG } from '@/config/appConfig';
 import { getAllTopicsVisual, getTopicVisual } from '@/config/topicConfig';
+import { Fonts } from '@/constants/theme';
 import { usePublishedArticles } from '@/hooks/useArticles';
 import { useTopicPreferences } from '@/hooks/useTopicPreferences';
 import { formatEditionDate } from '@/lib/consumerUtils';
@@ -89,12 +90,12 @@ function readShowImagesPreference(): boolean {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       const saved = window.localStorage.getItem(SHOW_IMAGES_STORAGE_KEY);
-      if (saved === '0') return false;
+      if (saved === '1') return true;
     }
   } catch {
     // ignore storage errors
   }
-  return true;
+  return false;
 }
 
 function writeShowImagesPreference(value: boolean): void {
@@ -193,7 +194,7 @@ export default function ConsumerHomeScreen() {
     getSignalStatus,
     getExplanation,
   } = useTopicPreferences();
-  const [showWelcomeCard, setShowWelcomeCard] = useState(
+  const [showOnboardingTips, setShowOnboardingTips] = useState(
     () => !hasCompletedOnboarding()
   );
   const [showImages, setShowImages] = useState(() =>
@@ -314,14 +315,14 @@ export default function ConsumerHomeScreen() {
       preferences
     );
 
-    if (showWelcomeCard && viewMode === 'today' && personalizedArticles.length > 0) {
+    if (viewMode === 'today' && personalizedArticles.length > 0) {
       const welcomeCard: Article = {
         id: '__ftue_welcome__',
         date: personalizedArticles[0].date,
         original_url: '',
         image_url: null,
         ai_headline: 'Welcome curious reader!',
-        ai_summary: 'Swipe to start reading',
+        ai_summary: 'No doomscrolling.',
         confidence_score: 1,
         confidence_reasoning: '',
         status: 'published',
@@ -338,7 +339,6 @@ export default function ConsumerHomeScreen() {
     preferences,
     savedArticleIds,
     selectedTopic,
-    showWelcomeCard,
     viewMode,
   ]);
 
@@ -358,6 +358,21 @@ export default function ConsumerHomeScreen() {
     : Math.min(currentIndex + 1, storyCount);
   const isCaughtUp =
     storyCount > 0 && currentIndex >= filteredArticles.length;
+  const progressFraction =
+    storyCount > 0
+      ? isCaughtUp
+        ? 1
+        : Math.min(1, Math.max(0, currentStoryNumber / storyCount))
+      : 0;
+  const progressAnim = useSharedValue(progressFraction);
+
+  useEffect(() => {
+    progressAnim.value = withTiming(progressFraction, { duration: 280 });
+  }, [progressFraction, progressAnim]);
+
+  const progressFillStyle = useAnimatedStyle(() => ({
+    width: `${Math.round(progressAnim.value * 1000) / 10}%`,
+  }));
 
   const effectiveStreakDays = useMemo(() => {
     const todayKey = getLocalDateKey();
@@ -376,7 +391,7 @@ export default function ConsumerHomeScreen() {
 
   const handleIndexChange = (index: number) => {
     setCurrentIndex(index);
-    if (index > 0 && showWelcomeCard) {
+    if (index > 0 && showOnboardingTips) {
       markOnboardingComplete();
     }
     if (
@@ -395,9 +410,9 @@ export default function ConsumerHomeScreen() {
   };
 
   const handleSelectTopic = (topic: string | null) => {
-    if (showWelcomeCard) {
+    if (showOnboardingTips) {
       markOnboardingComplete();
-      setShowWelcomeCard(false);
+      setShowOnboardingTips(false);
     }
     setSelectedTopic(topic);
     setCurrentIndex(0);
@@ -410,6 +425,7 @@ export default function ConsumerHomeScreen() {
     setSelectedTopic(null);
     setCurrentIndex(0);
     setDeckResetToken((prev) => prev + 1);
+    setMenuOpen(false);
   };
 
   const handleSelectOlderNews = async () => {
@@ -482,21 +498,17 @@ export default function ConsumerHomeScreen() {
     selectedTopic === SAVED_TOPIC_KEY
       ? 'Saved for later'
       : selectedTopic
-        ? `What's up, ${selectedTopic}`
+        ? `What's up, ${selectedTopic}?`
         : viewMode === 'today'
-          ? "What's up, today"
-          : "What's up";
-  const progressFraction =
-    storyCount > 0
-      ? isCaughtUp
-        ? 1
-        : Math.min(1, Math.max(0, currentStoryNumber / storyCount))
-      : 0;
+          ? "What's up, today?"
+          : "What's up?";
   const activeArticle = filteredArticles[currentIndex];
   const activeBgImage = showImages
     ? (activeArticle?.image_url ?? null)
     : null;
   const activeBgTint = getTopicVisual(activeArticle?.topic)?.color ?? null;
+  const showHeaderProgress = isTodayEdition && storyCount > 0;
+  const progressAccentColor = isCaughtUp ? '#2DD4BF' : (activeBgTint ?? '#2DD4BF');
   const editionDateLabel = articles[0]?.date
     ? formatEditionDate(articles[0].date, 'full')
     : new Date().toLocaleDateString('en-US', {
@@ -626,10 +638,16 @@ export default function ConsumerHomeScreen() {
         ]}
       >
         {/* Top Area: Wordmark + Date */}
-        <View
+        <Pressable
+          onPress={handleReturnToToday}
+          accessibilityRole="button"
+          accessibilityLabel="Restart today's news"
           style={{
             paddingHorizontal: 30,
             paddingBottom: 24,
+            ...(Platform.OS === 'web'
+              ? ({ cursor: 'pointer' } as Record<string, unknown>)
+              : {}),
           }}
         >
           <View
@@ -644,11 +662,8 @@ export default function ConsumerHomeScreen() {
                 fontWeight: '700',
                 color: '#fefaef',
                 letterSpacing: -0.45,
-                ...(Platform.OS === 'web'
-                  ? ({
-                    fontFamily:
-                      "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-                  } as Record<string, unknown>)
+                ...(Fonts?.sans
+                  ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
                   : {}),
               }}
               numberOfLines={1}
@@ -667,7 +682,7 @@ export default function ConsumerHomeScreen() {
           >
             {editionDateLabel}
           </Text>
-        </View>
+        </Pressable>
 
         {/* Middle Area: Scrollable Topic List with bottom fade */}
         <View
@@ -695,7 +710,7 @@ export default function ConsumerHomeScreen() {
           >
             <Pressable
               onPress={() => handleSelectTopic(null)}
-              style={({ pressed }) => ({
+              style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingVertical: 11,
@@ -705,11 +720,10 @@ export default function ConsumerHomeScreen() {
                   selectedTopic === null
                     ? 'rgba(255, 255, 255, 0.16)'
                     : 'transparent',
-                opacity: pressed ? 0.72 : 1,
                 ...(Platform.OS === 'web'
                   ? ({ cursor: 'pointer' } as Record<string, unknown>)
                   : {}),
-              })}
+              }}
             >
               {(() => {
                 const allVisual = getAllTopicsVisual();
@@ -735,11 +749,8 @@ export default function ConsumerHomeScreen() {
                     selectedTopic === null
                       ? '#FFFFFF'
                       : 'rgba(250, 249, 246, 0.78)',
-                  ...(Platform.OS === 'web'
-                    ? ({
-                      fontFamily:
-                        "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-                    } as Record<string, unknown>)
+                  ...(Fonts?.sans
+                    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
                     : {}),
                 }}
               >
@@ -750,7 +761,7 @@ export default function ConsumerHomeScreen() {
             {savedCount > 0 || selectedTopic === SAVED_TOPIC_KEY ? (
               <Pressable
                 onPress={() => handleSelectTopic(SAVED_TOPIC_KEY)}
-                style={({ pressed }) => ({
+                style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -761,11 +772,10 @@ export default function ConsumerHomeScreen() {
                     selectedTopic === SAVED_TOPIC_KEY
                       ? 'rgba(255, 255, 255, 0.16)'
                       : 'transparent',
-                  opacity: pressed ? 0.72 : 1,
                   ...(Platform.OS === 'web'
                     ? ({ cursor: 'pointer' } as Record<string, unknown>)
                     : {}),
-                })}
+                }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ marginRight: 11 }}>
@@ -788,11 +798,8 @@ export default function ConsumerHomeScreen() {
                         selectedTopic === SAVED_TOPIC_KEY
                           ? '#FFFFFF'
                           : 'rgba(250, 249, 246, 0.78)',
-                      ...(Platform.OS === 'web'
-                        ? ({
-                          fontFamily:
-                            "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-                        } as Record<string, unknown>)
+                      ...(Fonts?.sans
+                        ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
                         : {}),
                     }}
                   >
@@ -839,7 +846,7 @@ export default function ConsumerHomeScreen() {
                 >
                   <Pressable
                     onPress={() => handleSelectTopic(topic)}
-                    style={({ pressed }) => ({
+                    style={{
                       flex: 1,
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -847,11 +854,11 @@ export default function ConsumerHomeScreen() {
                       paddingLeft: 14,
                       paddingRight: 8,
                       minWidth: 0,
-                      opacity: pressed ? 0.45 : isMuted ? 0.55 : 1,
+                      opacity: isMuted ? 0.55 : 1,
                       ...(Platform.OS === 'web'
                         ? ({ cursor: 'pointer' } as Record<string, unknown>)
                         : {}),
-                    })}
+                    }}
                   >
                     {visual ? (
                       <View style={{ marginRight: 11 }}>
@@ -870,11 +877,8 @@ export default function ConsumerHomeScreen() {
                           ? '#FFFFFF'
                           : 'rgba(250, 249, 246, 0.78)',
                         flexShrink: 1,
-                        ...(Platform.OS === 'web'
-                          ? ({
-                            fontFamily:
-                              "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-                          } as Record<string, unknown>)
+                        ...(Fonts?.sans
+                          ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
                           : {}),
                       }}
                       numberOfLines={1}
@@ -887,7 +891,7 @@ export default function ConsumerHomeScreen() {
                     onPress={() => setInspectedTopic(topic)}
                     accessibilityLabel={`${topic} topic signal`}
                     hitSlop={8}
-                    style={({ pressed }) => ({
+                    style={{
                       width: 28,
                       height: 28,
                       borderRadius: 999,
@@ -895,11 +899,10 @@ export default function ConsumerHomeScreen() {
                       marginRight: 8,
                       justifyContent: 'center',
                       alignItems: 'center',
-                      opacity: pressed ? 0.55 : 1,
                       ...(Platform.OS === 'web'
                         ? ({ cursor: 'pointer' } as Record<string, unknown>)
                         : {}),
-                    })}
+                    }}
                   >
                     <TopicSignalIcon
                       status={signalStatus}
@@ -973,7 +976,7 @@ export default function ConsumerHomeScreen() {
                         onPress={() => setInspectedTopic(tag)}
                         accessibilityLabel={`${tag} tag signal`}
                         hitSlop={8}
-                        style={({ pressed }) => ({
+                        style={{
                           width: 26,
                           height: 26,
                           borderRadius: 999,
@@ -981,11 +984,10 @@ export default function ConsumerHomeScreen() {
                           marginRight: 8,
                           justifyContent: 'center',
                           alignItems: 'center',
-                          opacity: pressed ? 0.55 : 1,
                           ...(Platform.OS === 'web'
                             ? ({ cursor: 'pointer' } as Record<string, unknown>)
                             : {}),
-                        })}
+                        }}
                       >
                         <TopicSignalIcon status={signalStatus} size={13} />
                       </Pressable>
@@ -1240,129 +1242,132 @@ export default function ConsumerHomeScreen() {
           }}
           edges={['top', 'left', 'right']}
         >
-          {/* Minimal Apple HIG Header */}
-          <View className="pr-5 pt-6 pb-0.5 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-3 flex-1 min-w-0">
-              <Pressable
-                onPress={() => setMenuOpen((prev) => !prev)}
-                accessibilityLabel="Open topics menu"
-                hitSlop={12}
-                pointerEvents={menuOpen ? 'none' : 'auto'}
-                style={{
-                  backgroundColor: 'transparent',
-                  paddingVertical: 9,
-                  paddingRight: 8,
-                  paddingLeft: 0,
-                  overflow: 'hidden',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  opacity: menuOpen ? 0 : 1,
-                }}
-              >
-                <View
-                  style={{
-                    width: 18,
-                    gap: 4,
-                    transform: [{ translateX: -5 }],
-                  }}
-                >
-                  <View className="h-[2px] w-full bg-white rounded-full" />
-                  <View className="h-[2px] w-full bg-white rounded-full" />
-                  <View className="h-[2px] w-full bg-white rounded-full" />
-                </View>
-              </Pressable>
-
-              <Pressable
-                onPress={handleReturnToToday}
-                accessibilityLabel="Back to today's news"
-                className="flex-1 min-w-0 active:opacity-70"
-              >
-                <Text
-                  className="text-[22px] font-bold tracking-[-0.45px]"
-                  style={{
-                    color: '#FAF9F6',
-                    ...(Platform.OS === 'web'
-                      ? ({
-                        fontFamily:
-                          "'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif",
-                      } as Record<string, unknown>)
-                      : {}),
-                  }}
-                  numberOfLines={1}
-                >
-                  {headerTitle}
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Right Header: Concrete story progress in today's edition */}
-            {isTodayEdition && storyCount > 0 ? (
-              isCaughtUp ? (
-                <View
-                  style={{
-                    marginLeft: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 3.5,
-                    borderRadius: 999,
-                    backgroundColor: 'rgba(45, 212, 191, 0.16)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(45, 212, 191, 0.3)',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: '600',
-                      color: '#5EEAD4',
-                    }}
-                  >
-                    ✓ Done ({storyCount})
-                  </Text>
-                </View>
-              ) : (
-                <Text
-                  className="text-[13px] font-medium ml-2"
-                  style={{ color: 'rgba(250, 249, 246, 0.78)' }}
-                >
-                  {currentStoryNumber > 0
-                    ? `${currentStoryNumber} of ${storyCount}`
-                    : `${storyCount} ${storyCount === 1 ? 'story' : 'stories'}`}
-                </Text>
-              )
-            ) : null}
-          </View>
-
-          {/* Daily Progress Bar */}
-          {isTodayEdition && storyCount > 0 && !isCaughtUp ? (
+          {/* Slim Editorial Header + Integrated Progress Line */}
+          <View
+            style={{
+              paddingHorizontal: 20,
+              paddingTop: 10,
+              paddingBottom: 0,
+              alignItems: 'center',
+            }}
+          >
             <View
               style={{
-                paddingHorizontal: 20,
-                paddingTop: 8,
-                paddingBottom: 2,
-                alignItems: 'center',
+                width: '100%',
+                maxWidth: 420,
               }}
             >
               <View
                 style={{
-                  width: '100%',
-                  maxWidth: 420,
-                  height: 3.5,
-                  borderRadius: 999,
-                  backgroundColor: 'rgba(255, 255, 255, 0.16)',
-                  overflow: 'hidden',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingTop: 4,
+                  paddingBottom: showHeaderProgress ? 8 : 6,
+                  gap: 10,
                 }}
               >
-                <View
-                  style={{
-                    width: `${Math.round(progressFraction * 100)}%`,
-                    height: '100%',
-                    borderRadius: 999,
-                    backgroundColor: activeBgTint ?? '#2DD4BF',
-                  }}
-                />
+                <View className="flex-row items-center gap-3 flex-1 min-w-0">
+                  <Pressable
+                    onPress={() => setMenuOpen((prev) => !prev)}
+                    accessibilityLabel="Open topics menu"
+                    hitSlop={12}
+                    pointerEvents={menuOpen ? 'none' : 'auto'}
+                    style={{
+                      paddingVertical: 4,
+                      paddingRight: 4,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      opacity: menuOpen ? 0 : 1,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 17,
+                        gap: 4.5,
+                      }}
+                    >
+                      <View className="h-[1.75px] w-full bg-white rounded-full" />
+                      <View className="h-[1.75px] w-full bg-white rounded-full" />
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={handleReturnToToday}
+                    accessibilityLabel="Back to today's news"
+                    className="flex-1 min-w-0 active:opacity-70"
+                  >
+                    <Text
+                      className="text-[15.5px] font-semibold tracking-[-0.2px]"
+                      style={{
+                        color: '#FAF9F6',
+                        ...(Fonts?.sans
+                          ? ({ fontFamily: Fonts.sans } as Record<
+                              string,
+                              unknown
+                            >)
+                          : {}),
+                      }}
+                      numberOfLines={1}
+                    >
+                      {headerTitle}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {/* Minimal Tabular Progress Count */}
+                {showHeaderProgress ? (
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: isCaughtUp ? '600' : '500',
+                      color: isCaughtUp
+                        ? '#5EEAD4'
+                        : 'rgba(250, 249, 246, 0.78)',
+                      fontVariant: ['tabular-nums'],
+                      ...(Fonts?.sans
+                        ? ({ fontFamily: Fonts.sans } as Record<
+                            string,
+                            unknown
+                          >)
+                        : {}),
+                    }}
+                  >
+                    {isCaughtUp
+                      ? `✓ Done (${storyCount})`
+                      : currentStoryNumber > 0
+                        ? `${currentStoryNumber} / ${storyCount}`
+                        : `${storyCount} ${storyCount === 1 ? 'story' : 'stories'}`}
+                  </Text>
+                ) : null}
               </View>
+
+              {/* Hairline Progress Track */}
+              {showHeaderProgress ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    width: '100%',
+                    height: 2,
+                    borderRadius: 999,
+                    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Animated.View
+                    style={[
+                      progressFillStyle,
+                      {
+                        height: '100%',
+                        borderRadius: 999,
+                        backgroundColor: progressAccentColor,
+                      },
+                    ]}
+                  />
+                </View>
+              ) : null}
             </View>
-          ) : null}
+          </View>
 
           {/* Main Content */}
           {loadingOlder && viewMode === 'older' ? (
@@ -1415,7 +1420,7 @@ export default function ConsumerHomeScreen() {
               onSelectTopic={(topic) => handleSelectTopic(topic)}
               onClearTopic={() => handleSelectTopic(null)}
               showOnboardingTips={
-                showWelcomeCard && !selectedTopic && viewMode === 'today'
+                showOnboardingTips && !selectedTopic && viewMode === 'today'
               }
               showImages={showImages}
               fontScale={fontScale}

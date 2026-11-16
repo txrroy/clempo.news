@@ -20,7 +20,11 @@ import {
 } from './lib/firebase';
 import { sleep } from './lib/retry';
 import { buildInstructionsSnapshot } from './policy';
-import type { ArticleDocument, PipelineTraceStep } from './types';
+import type {
+  ArticleDocument,
+  ArticleRetryHistoryEntry,
+  PipelineTraceStep,
+} from './types';
 
 // Load agent/.env if present (local dev); existing env vars (e.g. Hostinger) take precedence
 const AGENT_DIR = resolve(__dirname, '../../agent');
@@ -75,6 +79,32 @@ async function runPipeline() {
 
   if (candidates.length === 0) {
     console.warn('No new RSS candidates to process. Exiting.');
+    await savePipelineRunLog(db, {
+      id: randomUUID(),
+      date: today,
+      at: new Date().toISOString(),
+      enabled_feeds_count: rssResult.enabledFeedsCount,
+      succeeded_feeds: rssResult.succeededFeeds,
+      failed_feeds: rssResult.failedFeeds,
+      raw_headlines_count: rssResult.rawHeadlinesCount,
+      merged_events_count: rssResult.mergedEventsCount,
+      new_candidates_count: 0,
+      already_seen_count: Math.max(
+        0,
+        allCandidates.length - candidates.length
+      ),
+      duplicate_groups: rssResult.duplicateGroups,
+      picked_count: 0,
+      target_count: 20,
+      full_text_count: 0,
+      snippet_fallback_count: 0,
+      ready_count: 0,
+      needs_check_count: 0,
+      could_not_verify_count: 0,
+      auto_retried_count: 0,
+      summarizer_failed_count: 0,
+      shortfall_reason: 'All deduplicated stories already appeared in earlier editions.',
+    });
     return;
   }
 
@@ -104,6 +134,8 @@ async function runPipeline() {
 
   // Agent 2 & Agent 3: Summarize and Judge each article independently
   const drafts: ArticleDocument[] = [];
+  let autoRetriedCount = 0;
+  let summarizerFailedCount = 0;
 
   for (const [index, article] of fetchedArticles.entries()) {
     console.log(`[${index + 1}/${fetchedArticles.length}] Summarizing & judging: ${article.title}`);
@@ -113,6 +145,7 @@ async function runPipeline() {
     });
     let summarizeDurationMs = Date.now() - summarizeStart;
     if (!summary) {
+      summarizerFailedCount += 1;
       if (index < fetchedArticles.length - 1) {
         await sleep(8_000);
       }
@@ -123,6 +156,7 @@ async function runPipeline() {
     let judgment = await judgeArticle(ai, article, summary);
     let judgeDurationMs = Date.now() - judgeStart;
     let autoRetriedComplexity = false;
+    const retryHistory: ArticleRetryHistoryEntry[] = [];
 
     // Fix 4: Retry "Too complex" automatically once before a human sees it.
     if (
@@ -132,6 +166,12 @@ async function runPipeline() {
       console.log(
         `  -> Auto-retrying "Too complex" for "${article.title}" before editor sees it...`
       );
+      const firstSummary = summary;
+      const firstJudgment = judgment;
+      const triggerLabel = firstJudgment.flags.includes('TOO_COMPLEX')
+        ? `TOO_COMPLEX (Readability ${Math.round(firstJudgment.scores.readability)}/100)`
+        : `Low readability (${Math.round(firstJudgment.scores.readability)}/100 < 80)`;
+
       const retryStart = Date.now();
       const simplified = await summarizeArticle(ai, article, {
         policy: activePolicy,
@@ -145,6 +185,31 @@ async function runPipeline() {
         judgment = await judgeArticle(ai, article, summary);
         judgeDurationMs += Date.now() - reJudgeStart;
         autoRetriedComplexity = true;
+        autoRetriedCount += 1;
+
+        retryHistory.push({
+          attempt: 1,
+          trigger: triggerLabel,
+          at: new Date().toISOString(),
+          before: {
+            ai_headline: firstSummary.ai_headline,
+            ai_summary: firstSummary.ai_summary,
+            ai_explanation: firstSummary.ai_explanation,
+            confidence_score: firstJudgment.confidence_score,
+            confidence_reasoning: firstJudgment.reasoning,
+            scores: firstJudgment.scores,
+            flags: firstJudgment.flags,
+          },
+          after: {
+            ai_headline: summary.ai_headline,
+            ai_summary: summary.ai_summary,
+            ai_explanation: summary.ai_explanation,
+            confidence_score: judgment.confidence_score,
+            confidence_reasoning: judgment.reasoning,
+            scores: judgment.scores,
+            flags: judgment.flags,
+          },
+        });
       }
     }
 
@@ -196,7 +261,7 @@ async function runPipeline() {
         duration_ms: summarizeDurationMs,
         status: 'ok',
         summary: autoRetriedComplexity
-          ? `Generated headline & summary under policy ${activePolicy.active_version} (${activePolicy.settings.reading_level}) · Auto-retried "Too complex" once to simplify wording.`
+          ? `Generated Draft 1 under policy ${activePolicy.active_version}, then auto-simplified once for ${activePolicy.settings.reading_level}.`
           : `Generated headline & summary under policy ${activePolicy.active_version} (${activePolicy.settings.reading_level}).`,
         details: {
           prompt_version: activePolicy.active_version,
@@ -207,6 +272,17 @@ async function runPipeline() {
           picked_count: topStories.length,
         },
       },
+      ...(retryHistory.length > 0
+        ? [
+            {
+              step: 'regenerate' as const,
+              agent: 'Agent 2 · Auto-Retry',
+              at: retryHistory[0].at,
+              status: 'ok' as const,
+              summary: `Auto-retried after "${retryHistory[0].trigger}": Readability ${Math.round(retryHistory[0].before.scores?.readability ?? retryHistory[0].before.confidence_score)} → ${Math.round(retryHistory[0].after.scores?.readability ?? retryHistory[0].after.confidence_score)}/100.`,
+            },
+          ]
+        : []),
       {
         step: 'judge',
         agent: 'Agent 3 · Judge',
@@ -257,9 +333,10 @@ async function runPipeline() {
       selection_reason: article.reason,
       used_fallback_snippet: article.usedFallbackSnippet,
       auto_retried_complexity: autoRetriedComplexity,
+      ...(retryHistory.length > 0 ? { retry_history: retryHistory } : {}),
       status: canAutoPublish ? 'published' : 'draft',
       approved_by: canAutoPublish ? 'auto-policy' : null,
-      approved_at: canAutoPublish ? nowIso : undefined,
+      approved_at: canAutoPublish ? nowIso : null,
       prompt_version: activePolicy.active_version,
       instructions_snapshot: instructionsSnapshot,
       pipeline_trace: pipelineTrace,
@@ -273,11 +350,19 @@ async function runPipeline() {
   const savedCount = await saveDraftArticles(db, drafts);
   const fullTextCount = drafts.filter((d) => !d.used_fallback_snippet).length;
   const snippetCount = drafts.length - fullTextCount;
-  const readyCount = drafts.filter((d) => d.judge_pass === true).length;
   const couldNotVerifyCount = drafts.filter(
     (d) =>
+      !d.judge_pass ||
+      d.confidence_score < 60 ||
       d.used_fallback_snippet ||
       (d.flags ?? []).includes('SNIPPET_ONLY')
+  ).length;
+  const readyCount = drafts.filter(
+    (d) =>
+      d.judge_pass === true &&
+      d.confidence_score >= 80 &&
+      !d.used_fallback_snippet &&
+      (d.flags ?? []).length === 0
   ).length;
   const needsCheckCount = Math.max(
     0,
@@ -307,6 +392,8 @@ async function runPipeline() {
     ready_count: readyCount,
     needs_check_count: needsCheckCount,
     could_not_verify_count: couldNotVerifyCount,
+    auto_retried_count: autoRetriedCount,
+    summarizer_failed_count: summarizerFailedCount,
   });
 
   console.log(`Pipeline complete. Saved ${savedCount} draft articles for ${today}.`);

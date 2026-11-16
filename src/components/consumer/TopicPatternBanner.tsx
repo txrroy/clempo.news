@@ -1,444 +1,957 @@
 import { View } from 'react-native';
 
-interface TopicPalette {
-  bg: string;
-  primary: string;
-  secondary: string;
-  accent: string;
+interface TopicTheme {
   variant: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  colors: [string, string, string, string, string];
 }
 
-const TOPIC_PALETTES: Record<string, TopicPalette> = {
+const TOPIC_THEMES: Record<string, TopicTheme> = {
   politics: {
-    bg: '#1E293B',
-    primary: 'rgba(249, 115, 22, 0.36)',
-    secondary: 'rgba(56, 189, 248, 0.28)',
-    accent: 'rgba(248, 250, 252, 0.22)',
     variant: 0,
-  },
-  technology: {
-    bg: '#0F172A',
-    primary: 'rgba(20, 184, 166, 0.4)',
-    secondary: 'rgba(34, 211, 238, 0.25)',
-    accent: 'rgba(167, 243, 208, 0.25)',
-    variant: 1,
-  },
-  environment: {
-    bg: '#14332B',
-    primary: 'rgba(52, 211, 153, 0.35)',
-    secondary: 'rgba(251, 191, 36, 0.28)',
-    accent: 'rgba(167, 243, 208, 0.2)',
-    variant: 2,
-  },
-  climate: {
-    bg: '#132A2E',
-    primary: 'rgba(45, 212, 191, 0.36)',
-    secondary: 'rgba(250, 204, 21, 0.24)',
-    accent: 'rgba(204, 251, 241, 0.2)',
-    variant: 2,
-  },
-  economy: {
-    bg: '#1C1917',
-    primary: 'rgba(217, 119, 6, 0.38)',
-    secondary: 'rgba(253, 230, 138, 0.24)',
-    accent: 'rgba(168, 162, 158, 0.2)',
-    variant: 3,
-  },
-  conflict: {
-    bg: '#272022',
-    primary: 'rgba(239, 68, 68, 0.34)',
-    secondary: 'rgba(251, 146, 60, 0.28)',
-    accent: 'rgba(254, 202, 202, 0.18)',
-    variant: 4,
-  },
-  defense: {
-    bg: '#1F2421',
-    primary: 'rgba(245, 158, 11, 0.32)',
-    secondary: 'rgba(148, 163, 184, 0.28)',
-    accent: 'rgba(226, 232, 240, 0.18)',
-    variant: 4,
-  },
-  security: {
-    bg: '#18181B',
-    primary: 'rgba(244, 63, 94, 0.32)',
-    secondary: 'rgba(161, 161, 170, 0.26)',
-    accent: 'rgba(244, 244, 245, 0.16)',
-    variant: 4,
-  },
-  science: {
-    bg: '#1E1B4B',
-    primary: 'rgba(129, 140, 248, 0.38)',
-    secondary: 'rgba(45, 212, 191, 0.28)',
-    accent: 'rgba(224, 231, 255, 0.22)',
-    variant: 5,
-  },
-  health: {
-    bg: '#162A35',
-    primary: 'rgba(56, 189, 248, 0.34)',
-    secondary: 'rgba(52, 211, 153, 0.28)',
-    accent: 'rgba(224, 242, 254, 0.2)',
-    variant: 5,
+    colors: ['#1D4ED8', '#2563EB', '#60A5FA', '#93C5FD', '#FB923C'],
   },
   diplomacy: {
-    bg: '#172554',
-    primary: 'rgba(96, 165, 250, 0.36)',
-    secondary: 'rgba(251, 191, 36, 0.26)',
-    accent: 'rgba(219, 234, 254, 0.2)',
-    variant: 6,
+    variant: 0,
+    colors: ['#0369A1', '#0284C7', '#38BDF8', '#7DD3FC', '#FBBF24'],
+  },
+  world: {
+    variant: 0,
+    colors: ['#2563EB', '#3B82F6', '#38BDF8', '#BAE6FD', '#34D399'],
+  },
+  technology: {
+    variant: 1,
+    colors: ['#10B981', '#0D9488', '#06B6D4', '#3B82F6', '#6366F1'],
+  },
+  ai: {
+    variant: 1,
+    colors: ['#06B6D4', '#0EA5E9', '#3B82F6', '#6366F1', '#A855F7'],
+  },
+  computing: {
+    variant: 1,
+    colors: ['#14B8A6', '#06B6D4', '#38BDF8', '#6366F1', '#8B5CF6'],
+  },
+  entertainment: {
+    variant: 2,
+    colors: ['#EC4899', '#8B5CF6', '#F472B6', '#C084FC', '#FBBF24'],
   },
   society: {
-    bg: '#2E1032',
-    primary: 'rgba(244, 114, 182, 0.34)',
-    secondary: 'rgba(251, 113, 133, 0.26)',
-    accent: 'rgba(252, 231, 243, 0.2)',
+    variant: 2,
+    colors: ['#F43F5E', '#A855F7', '#FB7185', '#C084FC', '#38BDF8'],
+  },
+  culture: {
+    variant: 2,
+    colors: ['#E11D48', '#7C3AED', '#F472B6', '#A78BFA', '#F59E0B'],
+  },
+  arts: {
+    variant: 2,
+    colors: ['#DB2777', '#9333EA', '#FB923C', '#C084FC', '#2DD4BF'],
+  },
+  environment: {
+    variant: 3,
+    colors: ['#10B981', '#34D399', '#2DD4BF', '#FBBF24', '#6EE7B7'],
+  },
+  climate: {
+    variant: 3,
+    colors: ['#0D9488', '#2DD4BF', '#38BDF8', '#FACC15', '#99F6E4'],
+  },
+  nature: {
+    variant: 3,
+    colors: ['#16A34A', '#4ADE80', '#2DD4BF', '#FDE047', '#38BDF8'],
+  },
+  economy: {
+    variant: 4,
+    colors: ['#FB7185', '#FBBF24', '#14B8A6', '#3B82F6', '#FB923C'],
+  },
+  markets: {
+    variant: 4,
+    colors: ['#F59E0B', '#10B981', '#38BDF8', '#FB7185', '#A78BFA'],
+  },
+  business: {
+    variant: 4,
+    colors: ['#2563EB', '#F59E0B', '#14B8A6', '#FB7185', '#60A5FA'],
+  },
+  science: {
+    variant: 5,
+    colors: ['#38BDF8', '#818CF8', '#34D399', '#F472B6', '#FBBF24'],
+  },
+  health: {
+    variant: 5,
+    colors: ['#2DD4BF', '#38BDF8', '#4ADE80', '#FB7185', '#A78BFA'],
+  },
+  conflict: {
+    variant: 6,
+    colors: ['#F43F5E', '#FB923C', '#3B82F6', '#14B8A6', '#FBBF24'],
+  },
+  defense: {
+    variant: 6,
+    colors: ['#EF4444', '#F59E0B', '#0EA5E9', '#2DD4BF', '#818CF8'],
+  },
+  security: {
+    variant: 6,
+    colors: ['#E11D48', '#8B5CF6', '#06B6D4', '#FBBF24', '#34D399'],
+  },
+  sports: {
     variant: 7,
+    colors: ['#2563EB', '#FACC15', '#F43F5E', '#10B981', '#FB923C'],
+  },
+  lifestyle: {
+    variant: 7,
+    colors: ['#FB7185', '#FBBF24', '#34D399', '#60A5FA', '#A855F7'],
   },
 };
 
-const FALLBACK_PALETTES = Object.values(TOPIC_PALETTES);
+const FALLBACK_THEMES = Object.values(TOPIC_THEMES);
 
-function getPaletteForTopic(topic?: string): TopicPalette {
+function getThemeForTopic(topic?: string): TopicTheme {
   const key = topic?.trim().toLowerCase() ?? '';
-  if (key && TOPIC_PALETTES[key]) {
-    return TOPIC_PALETTES[key];
+  if (key && TOPIC_THEMES[key]) {
+    return TOPIC_THEMES[key];
   }
   let hash = 0;
   for (let i = 0; i < key.length; i += 1) {
     hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
   }
-  return FALLBACK_PALETTES[hash % FALLBACK_PALETTES.length];
+  return FALLBACK_THEMES[hash % FALLBACK_THEMES.length];
 }
 
-export function TopicPatternBanner({ topic }: { topic?: string }) {
-  const palette = getPaletteForTopic(topic);
+function withAlpha(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Pure React Native regular flat-top hexagon built from 3 rotated solid rectangles.
+ * Solid colors guarantee zero internal seam artifacts across iOS, Android, and Web.
+ */
+function SolidHexagon({
+  radius,
+  color,
+  top,
+  left,
+  right,
+  bottom,
+}: {
+  radius: number;
+  color: string;
+  top?: number;
+  left?: number;
+  right?: number;
+  bottom?: number;
+}) {
+  const rectWidth = Math.round((2 * radius) / Math.sqrt(3));
+  const rectHeight = radius * 2;
+  const boxSize = Math.round(rectHeight * 1.18);
 
   return (
     <View
       style={{
-        width: '100%',
-        height: '100%',
-        backgroundColor: palette.bg,
-        overflow: 'hidden',
-        position: 'relative',
+        position: 'absolute',
+        top,
+        left,
+        right,
+        bottom,
+        width: boxSize,
+        height: boxSize,
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
-      {/* Variant 0: Diagonal ribbons & orb */}
-      {palette.variant === 0 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -40,
-              right: -30,
-              width: 190,
-              height: 190,
-              borderRadius: 95,
-              backgroundColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -55,
-              left: 30,
-              width: 240,
-              height: 120,
-              backgroundColor: palette.secondary,
-              transform: [{ rotate: '-18deg' }],
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 24,
-              left: -20,
-              width: 110,
-              height: 110,
-              borderRadius: 55,
-              borderWidth: 2,
-              borderColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
+      <View
+        style={{
+          position: 'absolute',
+          width: rectWidth,
+          height: rectHeight,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: rectWidth,
+          height: rectHeight,
+          backgroundColor: color,
+          transform: [{ rotate: '60deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: rectWidth,
+          height: rectHeight,
+          backgroundColor: color,
+          transform: [{ rotate: '-60deg' }],
+        }}
+      />
+    </View>
+  );
+}
 
-      {/* Variant 1: Concentric orbital rings */}
-      {palette.variant === 1 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -50,
-              right: -20,
-              width: 220,
-              height: 220,
-              borderRadius: 110,
-              borderWidth: 24,
-              borderColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -60,
-              left: -30,
-              width: 180,
-              height: 180,
-              borderRadius: 90,
-              backgroundColor: palette.secondary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 32,
-              right: 84,
-              width: 18,
-              height: 18,
-              borderRadius: 9,
-              backgroundColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
+export function TopicPatternBanner({
+  topic,
+  reverse = false,
+}: {
+  topic?: string;
+  reverse?: boolean;
+}) {
+  const { variant, colors } = getThemeForTopic(topic);
+  const [c1, c2, c3, c4, c5] = colors;
 
-      {/* Variant 2: Layered organic horizon waves */}
-      {palette.variant === 2 ? (
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'transparent',
+        overflow: 'hidden',
+        position: 'relative',
+        ...(reverse
+          ? {
+              opacity: 0.42,
+              transform: [{ scaleX: -1 }],
+            }
+          : {}),
+      }}
+    >
+      {/* Variant 0: Thin floating color rectangles of varied sizes descending from top */}
+      {variant === 0 ? (
         <>
           <View
             style={{
               position: 'absolute',
-              top: -28,
-              right: 28,
-              width: 110,
-              height: 110,
-              borderRadius: 55,
-              backgroundColor: palette.secondary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -95,
-              left: -40,
-              width: 320,
-              height: 180,
-              borderRadius: 160,
-              backgroundColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -115,
-              right: -50,
-              width: 280,
-              height: 170,
-              borderRadius: 140,
-              backgroundColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
-
-      {/* Variant 3: Bauhaus stepped blocks & quarter arc */}
-      {palette.variant === 3 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              width: 150,
-              height: 150,
-              borderBottomLeftRadius: 150,
-              backgroundColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 48,
-              width: 90,
-              height: 68,
-              backgroundColor: palette.secondary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 150,
-              width: 48,
-              height: 108,
-              backgroundColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
-
-      {/* Variant 4: Intersecting rotated diamonds */}
-      {palette.variant === 4 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -35,
-              right: 20,
-              width: 140,
-              height: 140,
-              backgroundColor: palette.primary,
-              transform: [{ rotate: '45deg' }],
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -55,
-              right: 110,
-              width: 130,
-              height: 130,
-              backgroundColor: palette.secondary,
-              transform: [{ rotate: '45deg' }],
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 26,
-              left: -30,
-              width: 96,
-              height: 96,
-              borderWidth: 2,
-              borderColor: palette.accent,
-              transform: [{ rotate: '30deg' }],
-            }}
-          />
-        </>
-      ) : null}
-
-      {/* Variant 5: Dual-sphere overlap & crisp ring */}
-      {palette.variant === 5 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -20,
-              left: 60,
-              width: 160,
-              height: 160,
-              borderRadius: 80,
-              backgroundColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -40,
-              right: 20,
-              width: 170,
-              height: 170,
-              borderRadius: 85,
-              backgroundColor: palette.secondary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 22,
-              right: 26,
-              width: 64,
-              height: 64,
-              borderRadius: 32,
-              borderWidth: 2,
-              borderColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
-
-      {/* Variant 6: Meridian arcs */}
-      {palette.variant === 6 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -60,
-              left: -40,
-              width: 240,
-              height: 240,
-              borderRadius: 120,
-              borderWidth: 28,
-              borderColor: palette.primary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              bottom: -50,
-              right: -20,
-              width: 190,
-              height: 190,
-              borderRadius: 95,
-              backgroundColor: palette.secondary,
-            }}
-          />
-          <View
-            style={{
-              position: 'absolute',
-              top: 38,
-              right: 36,
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: palette.accent,
-            }}
-          />
-        </>
-      ) : null}
-
-      {/* Variant 7: Modernist tilted blocks & circle */}
-      {palette.variant === 7 ? (
-        <>
-          <View
-            style={{
-              position: 'absolute',
-              top: -20,
-              right: -10,
-              width: 165,
-              height: 130,
-              borderRadius: 28,
-              backgroundColor: palette.primary,
+              top: -10,
+              left: 12,
+              width: 14,
+              height: 54,
+              borderRadius: 7,
+              backgroundColor: withAlpha(c1, 0.85),
               transform: [{ rotate: '14deg' }],
             }}
           />
           <View
             style={{
               position: 'absolute',
-              bottom: -45,
-              left: 24,
-              width: 150,
-              height: 150,
-              borderRadius: 75,
-              backgroundColor: palette.secondary,
+              top: -12,
+              left: 42,
+              width: 24,
+              height: 72,
+              borderRadius: 9,
+              backgroundColor: withAlpha(c2, 0.72),
+              transform: [{ rotate: '14deg' }],
             }}
           />
           <View
             style={{
               position: 'absolute',
-              top: 28,
+              top: 6,
+              left: 82,
+              width: 11,
+              height: 44,
+              borderRadius: 6,
+              backgroundColor: withAlpha(c3, 0.88),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -10,
               left: 110,
-              width: 52,
-              height: 52,
-              borderRadius: 14,
-              borderWidth: 2,
-              borderColor: palette.accent,
-              transform: [{ rotate: '-12deg' }],
+              width: 20,
+              height: 62,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c4, 0.82),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 148,
+              width: 12,
+              height: 38,
+              borderRadius: 6,
+              backgroundColor: withAlpha(c5, 0.88),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -12,
+              right: 116,
+              width: 22,
+              height: 68,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c2, 0.65),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 84,
+              width: 11,
+              height: 50,
+              borderRadius: 6,
+              backgroundColor: withAlpha(c1, 0.8),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -10,
+              right: 48,
+              width: 18,
+              height: 58,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c3, 0.82),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -8,
+              right: 16,
+              width: 13,
+              height: 44,
+              borderRadius: 7,
+              backgroundColor: withAlpha(c5, 0.88),
+              transform: [{ rotate: '14deg' }],
             }}
           />
         </>
       ) : null}
+
+      {/* Variant 1: Radiant chromatic prism hexagons + joyful aqua orb */}
+      {variant === 1 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: 8,
+              left: 72,
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: withAlpha(c3, 0.24),
+            }}
+          />
+          <SolidHexagon radius={30} color={c1} top={-14} left={-10} />
+          <SolidHexagon radius={27} color={c2} top={-20} left={38} />
+          <SolidHexagon radius={29} color={c3} top={-6} left={90} />
+          <SolidHexagon radius={26} color={c4} top={-18} right={72} />
+          <SolidHexagon radius={30} color={c5} top={-4} right={8} />
+          <View
+            style={{
+              position: 'absolute',
+              top: 52,
+              right: 76,
+              width: 13,
+              height: 13,
+              borderRadius: 7,
+              backgroundColor: withAlpha(c3, 0.85),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 2: Playful crisscrossing translucent ribbons & confetti dots */}
+      {variant === 2 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: 20,
+              left: -16,
+              width: 190,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: withAlpha(c1, 0.74),
+              transform: [{ rotate: '-11deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 22,
+              left: 74,
+              width: 210,
+              height: 16,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c2, 0.74),
+              transform: [{ rotate: '8deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: 34,
+              width: 118,
+              height: 15,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c3, 0.78),
+              transform: [{ rotate: '-15deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 12,
+              right: 22,
+              width: 12,
+              height: 36,
+              borderRadius: 6,
+              backgroundColor: withAlpha(c5, 0.88),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 50,
+              left: 146,
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c4, 0.8),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 48,
+              right: 68,
+              width: 11,
+              height: 11,
+              borderRadius: 6,
+              backgroundColor: withAlpha(c5, 0.85),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 3: Golden hour morning sun & meadow domes */}
+      {variant === 3 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: -36,
+              left: -12,
+              width: 150,
+              height: 102,
+              borderRadius: 75,
+              backgroundColor: withAlpha(c2, 0.68),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -40,
+              left: 108,
+              width: 168,
+              height: 104,
+              borderRadius: 84,
+              backgroundColor: withAlpha(c3, 0.64),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 28,
+              width: 54,
+              height: 54,
+              borderRadius: 27,
+              backgroundColor: withAlpha(c4, 0.9),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -16,
+              right: -16,
+              width: 96,
+              height: 78,
+              borderTopLeftRadius: 56,
+              borderBottomLeftRadius: 56,
+              borderBottomRightRadius: 12,
+              backgroundColor: withAlpha(c1, 0.78),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 56,
+              left: 112,
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              backgroundColor: withAlpha(c4, 0.88),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 4: Editorial modernist arches & sunlit cutouts */}
+      {variant === 4 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: -14,
+              left: -10,
+              width: 104,
+              height: 80,
+              borderBottomRightRadius: 80,
+              backgroundColor: withAlpha(c1, 0.82),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 14,
+              left: 92,
+              width: 72,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: withAlpha(c2, 0.88),
+              transform: [{ rotate: '-16deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -26,
+              right: 72,
+              width: 84,
+              height: 84,
+              borderRadius: 42,
+              borderWidth: 14,
+              borderColor: withAlpha(c3, 0.82),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -14,
+              right: -8,
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: withAlpha(c4, 0.84),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 54,
+              right: 62,
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              backgroundColor: withAlpha(c5, 0.9),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 5: Weightless botanical petals & aurora bubbles */}
+      {variant === 5 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: -20,
+              left: 6,
+              width: 84,
+              height: 84,
+              borderTopLeftRadius: 56,
+              borderBottomRightRadius: 56,
+              borderTopRightRadius: 10,
+              borderBottomLeftRadius: 10,
+              backgroundColor: withAlpha(c1, 0.72),
+              transform: [{ rotate: '12deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -26,
+              left: 84,
+              width: 92,
+              height: 92,
+              borderRadius: 46,
+              backgroundColor: withAlpha(c2, 0.66),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 8,
+              left: 164,
+              width: 60,
+              height: 60,
+              borderTopLeftRadius: 42,
+              borderBottomRightRadius: 42,
+              borderTopRightRadius: 8,
+              borderBottomLeftRadius: 8,
+              backgroundColor: withAlpha(c3, 0.78),
+              transform: [{ rotate: '-28deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -16,
+              right: 16,
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: withAlpha(c4, 0.72),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 48,
+              right: 88,
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              backgroundColor: withAlpha(c5, 0.88),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 6: Crisp joyful confetti capsules & balance arcs */}
+      {variant === 6 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: -12,
+              left: -8,
+              width: 96,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: withAlpha(c1, 0.82),
+              transform: [{ rotate: '-18deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 92,
+              width: 48,
+              height: 48,
+              borderRadius: 12,
+              backgroundColor: withAlpha(c2, 0.84),
+              transform: [{ rotate: '34deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -34,
+              right: 88,
+              width: 98,
+              height: 98,
+              borderRadius: 49,
+              borderWidth: 14,
+              borderColor: withAlpha(c3, 0.8),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -10,
+              right: 10,
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: withAlpha(c4, 0.76),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 52,
+              right: 92,
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              backgroundColor: withAlpha(c5, 0.9),
+            }}
+          />
+        </>
+      ) : null}
+
+      {/* Variant 7: Mediterranean citrus & cobalt Matisse collage */}
+      {variant === 7 ? (
+        <>
+          <View
+            style={{
+              position: 'absolute',
+              top: -22,
+              left: -10,
+              width: 112,
+              height: 96,
+              borderRadius: 56,
+              backgroundColor: withAlpha(c1, 0.82),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 82,
+              width: 94,
+              height: 46,
+              borderRadius: 23,
+              backgroundColor: withAlpha(c2, 0.9),
+              transform: [{ rotate: '14deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -16,
+              right: 86,
+              width: 78,
+              height: 78,
+              borderRadius: 39,
+              backgroundColor: withAlpha(c3, 0.78),
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: -10,
+              right: -14,
+              width: 94,
+              height: 76,
+              borderTopLeftRadius: 40,
+              borderBottomLeftRadius: 40,
+              backgroundColor: withAlpha(c4, 0.84),
+              transform: [{ rotate: '-16deg' }],
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 52,
+              right: 68,
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              backgroundColor: withAlpha(c5, 0.88),
+            }}
+          />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Joyful pastel abstract frame for the daily edition cover card,
+ * matching the colorful floating geometric shapes used across story banners.
+ */
+export function CoverPatternArt() {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Top playful pastel shapes descending from the top edge */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 82,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            top: -10,
+            left: 16,
+            width: 14,
+            height: 48,
+            borderRadius: 7,
+            backgroundColor: withAlpha('#93C5FD', 0.78),
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: -14,
+            left: 44,
+            width: 22,
+            height: 60,
+            borderRadius: 9,
+            backgroundColor: withAlpha('#99F6E4', 0.8),
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 80,
+            width: 11,
+            height: 36,
+            borderRadius: 6,
+            backgroundColor: withAlpha('#FDE68A', 0.88),
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: 112,
+            width: 13,
+            height: 13,
+            borderRadius: 7,
+            backgroundColor: withAlpha('#A5B4FC', 0.78),
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: -18,
+            right: 54,
+            width: 54,
+            height: 54,
+            borderRadius: 27,
+            backgroundColor: withAlpha('#FBCFE8', 0.78),
+          }}
+        />
+        <SolidHexagon
+          radius={20}
+          color={withAlpha('#DDD6FE', 0.82)}
+          top={-10}
+          right={8}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: 18,
+            right: 118,
+            width: 11,
+            height: 34,
+            borderRadius: 6,
+            backgroundColor: withAlpha('#A7F3D0', 0.85),
+            transform: [{ rotate: '-14deg' }],
+          }}
+        />
+      </View>
+
+      {/* Bottom pastel corner accents */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 76,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -22,
+            left: 14,
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: withAlpha('#FDE68A', 0.76),
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -10,
+            left: 62,
+            width: 14,
+            height: 44,
+            borderRadius: 7,
+            backgroundColor: withAlpha('#C4B5FD', 0.74),
+            transform: [{ rotate: '-14deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 22,
+            left: 94,
+            width: 11,
+            height: 11,
+            borderRadius: 6,
+            backgroundColor: withAlpha('#6EE7B7', 0.82),
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -14,
+            right: 54,
+            width: 46,
+            height: 46,
+            borderRadius: 23,
+            backgroundColor: withAlpha('#BAE6FD', 0.76),
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            bottom: -12,
+            right: 26,
+            width: 17,
+            height: 52,
+            borderRadius: 9,
+            backgroundColor: withAlpha('#FBCFE8', 0.84),
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 6,
+            right: 8,
+            width: 11,
+            height: 36,
+            borderRadius: 6,
+            backgroundColor: withAlpha('#FED7AA', 0.88),
+            transform: [{ rotate: '14deg' }],
+          }}
+        />
+      </View>
     </View>
   );
 }

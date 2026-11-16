@@ -36,7 +36,7 @@ export const DEFAULT_FLAG_AUTONOMY: FlagAutonomyConfig = {
 
 export const DEFAULT_POLICY_SETTINGS: PolicySettings = {
   reading_level: 'grade 6',
-  target_headline_words: 10,
+  target_headline_words: 6,
   target_summary_words: 60,
   tone: 'calm_neutral',
   max_per_topic: 4,

@@ -24,6 +24,7 @@ import {
 import type {
   ActivePolicyDoc,
   ArticleDocument,
+  ArticleRetryHistoryEntry,
   DuplicateClusterGroup,
   FetchedArticle,
   PipelineTraceStep,
@@ -487,6 +488,8 @@ export async function handlePipelineStream(
     }
 
     const savedDrafts: ArticleDocument[] = [];
+    let autoRetriedCount = 0;
+    let summarizerFailedCount = 0;
 
     for (const [idx, article] of targets.entries()) {
       sendEvent({
@@ -501,6 +504,7 @@ export async function handlePipelineStream(
       });
 
       if (!summary) {
+        summarizerFailedCount += 1;
         sendEvent({
           type: 'error',
           message: `Agent 2 could not summarize "${article.title}".`,
@@ -535,8 +539,23 @@ export async function handlePipelineStream(
         });
       }
 
-      // Autonomous self-correction loop if Agent 3 fails the draft
-      if (!judgment.pass) {
+      let autoRetriedComplexity = false;
+      const retryHistory: ArticleRetryHistoryEntry[] = [];
+
+      // Autonomous self-correction loop if Agent 3 flags issues or low readability
+      if (
+        !judgment.pass ||
+        judgment.flags.includes('TOO_COMPLEX') ||
+        judgment.scores.readability < 80
+      ) {
+        const firstSummary = summary;
+        const firstJudgment = judgment;
+        const triggerLabel = !firstJudgment.pass
+          ? `Judge flagged review (${firstJudgment.flags.join(', ') || 'score below threshold'})`
+          : firstJudgment.flags.includes('TOO_COMPLEX')
+            ? `TOO_COMPLEX (Readability ${Math.round(firstJudgment.scores.readability)}/100)`
+            : `Low readability (${Math.round(firstJudgment.scores.readability)}/100 < 80)`;
+
         sendEvent({
           type: 'agent3_retry',
           index: idx,
@@ -561,6 +580,33 @@ export async function handlePipelineStream(
             isRetry: true,
           });
           judgment = await judgeArticle(ai, article, summary);
+          autoRetriedComplexity = true;
+          autoRetriedCount += 1;
+
+          retryHistory.push({
+            attempt: 1,
+            trigger: triggerLabel,
+            at: new Date().toISOString(),
+            before: {
+              ai_headline: firstSummary.ai_headline,
+              ai_summary: firstSummary.ai_summary,
+              ai_explanation: firstSummary.ai_explanation,
+              confidence_score: firstJudgment.confidence_score,
+              confidence_reasoning: firstJudgment.reasoning,
+              scores: firstJudgment.scores,
+              flags: firstJudgment.flags,
+            },
+            after: {
+              ai_headline: summary.ai_headline,
+              ai_summary: summary.ai_summary,
+              ai_explanation: summary.ai_explanation,
+              confidence_score: judgment.confidence_score,
+              confidence_reasoning: judgment.reasoning,
+              scores: judgment.scores,
+              flags: judgment.flags,
+            },
+          });
+
           for (const claim of judgment.claims) {
             const supported =
               claim.evidence.trim().toLowerCase() !== 'unsupported';
@@ -595,12 +641,34 @@ export async function handlePipelineStream(
           summary: `Grouped from ${article.source_count} outlet(s): ${article.source_names.join(', ')}`,
         },
         {
+          step: 'extract',
+          agent: 'Agent 1 · Text Extractor',
+          at: nowIso,
+          status: article.usedFallbackSnippet ? 'fallback' : 'ok',
+          summary: article.usedFallbackSnippet
+            ? `Full-text scrape failed; fell back to RSS snippet (${article.fullText.length} chars).`
+            : `Extracted ${article.fullText.length} chars from publisher page.`,
+        },
+        {
           step: 'summarize',
           agent: 'Agent 2 · Summarizer',
           at: nowIso,
           status: 'ok',
-          summary: `Drafted ${activePolicy.settings.reading_level} summary`,
+          summary: autoRetriedComplexity
+            ? `Drafted ${activePolicy.settings.reading_level} summary, then auto-retried once.`
+            : `Drafted ${activePolicy.settings.reading_level} summary`,
         },
+        ...(retryHistory.length > 0
+          ? [
+              {
+                step: 'regenerate' as const,
+                agent: 'Agent 2 · Auto-Retry',
+                at: retryHistory[0].at,
+                status: 'ok' as const,
+                summary: `Auto-retried after "${retryHistory[0].trigger}": Readability ${Math.round(retryHistory[0].before.scores?.readability ?? retryHistory[0].before.confidence_score)} → ${Math.round(retryHistory[0].after.scores?.readability ?? retryHistory[0].after.confidence_score)}/100.`,
+              },
+            ]
+          : []),
         {
           step: 'judge',
           agent: 'Agent 3 · Judge',
@@ -640,6 +708,8 @@ export async function handlePipelineStream(
         selection_reason: article.reason,
         source_text: article.fullText.slice(0, 6000),
         used_fallback_snippet: article.usedFallbackSnippet,
+        auto_retried_complexity: autoRetriedComplexity,
+        ...(retryHistory.length > 0 ? { retry_history: retryHistory } : {}),
         prompt_version: activePolicy.active_version,
         instructions_snapshot: instructionsSnapshot,
         pipeline_trace: traceSteps,
@@ -662,11 +732,19 @@ export async function handlePipelineStream(
         (d) => !d.used_fallback_snippet
       ).length;
       const snippetCount = savedDrafts.length - fullTextCount;
-      const readyCount = savedDrafts.filter((d) => d.judge_pass === true).length;
       const couldNotVerifyCount = savedDrafts.filter(
         (d) =>
+          !d.judge_pass ||
+          d.confidence_score < 60 ||
           d.used_fallback_snippet ||
           (d.flags ?? []).includes('SNIPPET_ONLY')
+      ).length;
+      const readyCount = savedDrafts.filter(
+        (d) =>
+          d.judge_pass === true &&
+          d.confidence_score >= 80 &&
+          !d.used_fallback_snippet &&
+          (d.flags ?? []).length === 0
       ).length;
       const needsCheckCount = Math.max(
         0,
@@ -693,6 +771,8 @@ export async function handlePipelineStream(
         ready_count: readyCount,
         needs_check_count: needsCheckCount,
         could_not_verify_count: couldNotVerifyCount,
+        auto_retried_count: autoRetriedCount,
+        summarizer_failed_count: summarizerFailedCount,
       });
     }
 

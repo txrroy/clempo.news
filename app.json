@@ -8,7 +8,11 @@
     "scheme": "snappylit",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/snappylit-logo-v3.png"
+      "icon": "./assets/images/snappylit-logo-v3.png",
+      "bundleIdentifier": "com.txrroy.snappylitv2",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +21,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.txrroy.snappylitv2"
     },
     "web": {
       "output": "single",
@@ -40,8 +45,14 @@
     },
     "extra": {
       "eas": {
-        "projectId": "02a1339d-e706-4088-8472-ed480d99310c"
+        "projectId": "cc292c83-62b3-4222-8dce-3d447548a45c"
+      },
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
       }
-    }
+    },
+    "owner": "txrroy"
   }
 }

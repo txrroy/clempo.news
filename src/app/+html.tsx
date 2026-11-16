@@ -1,16 +1,10 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
-const DM_SANS_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&display=swap';
-const WORK_SANS_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400..700;1,400..700&display=swap';
-const CABINET_GROTESK_STYLESHEET =
-  'https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap';
-const BRICOLAGE_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap';
-const PLUS_JAKARTA_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..700&display=swap';
+const NEWSREADER_STYLESHEET =
+  'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&display=swap';
+const INTER_STYLESHEET =
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -29,11 +23,8 @@ export default function Root({ children }: PropsWithChildren) {
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
-        <link id="dm-sans-font" rel="stylesheet" href={DM_SANS_STYLESHEET} />
-        <link id="work-sans-font" rel="stylesheet" href={WORK_SANS_STYLESHEET} />
-        <link id="cabinet-grotesk-font" rel="stylesheet" href={CABINET_GROTESK_STYLESHEET} />
-        <link id="bricolage-grotesque-font" rel="stylesheet" href={BRICOLAGE_STYLESHEET} />
-        <link id="plus-jakarta-sans-font" rel="stylesheet" href={PLUS_JAKARTA_STYLESHEET} />
+        <link id="newsreader-font" rel="stylesheet" href={NEWSREADER_STYLESHEET} />
+        <link id="inter-font" rel="stylesheet" href={INTER_STYLESHEET} />
         <ScrollViewStyleReset />
         <style>{`html, body { background-color: #141821; }`}</style>
       </head>

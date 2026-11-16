@@ -14,6 +14,7 @@ import {
   computeTodayCounts,
   getArticleTimestamp,
   getEditorialState,
+  getMissedRunNotice,
   getQueueReviewReason,
   isSnippetOnlyUnverified,
 } from '@/lib/editorialLabels';
@@ -469,6 +470,10 @@ export function EditorOverviewPane({
       autoPublishedCount: todayItems.filter(
         (a) => a.status === 'published' && a.approved_by === 'auto-policy'
       ).length,
+      autoRetriedCount:
+        runLog?.auto_retried_count ??
+        todayItems.filter((a) => Boolean(a.auto_retried_complexity)).length,
+      summarizerFailedCount: runLog?.summarizer_failed_count ?? 0,
     };
   }, [articles, enabledSourcesCount, latestRunLog, today]);
 
@@ -531,6 +536,10 @@ export function EditorOverviewPane({
   }, [articles]);
 
   const waitingCount = todayData.counts.needsReview;
+  const missedRunNotice = useMemo(
+    () => getMissedRunNotice(latestRunLog, today),
+    [latestRunLog, today]
+  );
 
   const summaryVersion: 'A' | 'B' | 'C' =
     todayData.pickedCount === 0 ? 'C' : waitingCount > 0 ? 'A' : 'B';
@@ -540,6 +549,51 @@ export function EditorOverviewPane({
       title={formatEditionHeading(today)}
       subtitle={`Edition date (UTC) · Current time: ${formatCurrentUtcTime()}`}
     >
+      {missedRunNotice ? (
+        <DSSurface
+          variant="muted"
+          radius="md"
+          bordered
+          style={{
+            padding: theme.spacing.lg,
+            borderColor: theme.colors.tones.warning.border,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: theme.spacing.md,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 260, gap: theme.spacing.xxs }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <DSBadge label="Missed Run Alert" tone="warning" />
+                <DSText variant="subhead" weight="bold" tone="primary">
+                  {missedRunNotice.title}
+                </DSText>
+              </View>
+              <DSText variant="caption" tone="secondary">
+                {missedRunNotice.detail}
+              </DSText>
+            </View>
+            <DSButton
+              label="Run pipeline now"
+              variant="secondary"
+              size="sm"
+              onPress={onOpenLivePipeline}
+            />
+          </View>
+        </DSSurface>
+      ) : null}
       {/* SECTION 1: TWO SPLIT CARDS (Left: Today’s edition + Donut, Right: 30-day Bar Chart + Run Pipeline) */}
       <View
         style={{
@@ -948,6 +1002,12 @@ export function EditorOverviewPane({
               <DSText variant="footnote" tone="secondary">
                 Ran at {todayData.runTimeStr}. Policy{' '}
                 {activePolicy.active_version}.
+                {todayData.autoRetriedCount > 0
+                  ? ` ${todayData.autoRetriedCount} auto-simplified ("Too complex").`
+                  : ''}
+                {todayData.summarizerFailedCount > 0
+                  ? ` ${todayData.summarizerFailedCount} failed to draft.`
+                  : ''}
               </DSText>
             </View>
 
@@ -988,16 +1048,21 @@ export function EditorOverviewPane({
                   name: '3. Scrape and draft',
                   who: 'Summarizer',
                   number: `${todayData.fullTextCount} full text`,
-                  line:
+                  line: `${
                     todayData.snippetCount > 0
                       ? `${todayData.snippetCount} from RSS snippets`
-                      : '0 snippet fallbacks',
+                      : '0 snippet fallbacks'
+                  }${
+                    todayData.autoRetriedCount > 0
+                      ? ` · ${todayData.autoRetriedCount} auto-simplified`
+                      : ''
+                  }`,
                 },
                 {
                   id: '4' as PipelineStepId,
                   name: '4. Check facts',
                   who: 'Judge',
-                  number: `${todayData.runReadyCount} passed (run)`,
+                  number: `${todayData.runReadyCount} ready`,
                   line:
                     todayData.runUnverifiedCount > 0
                       ? `${todayData.runNeedsCheckCount} needs check · ${todayData.runUnverifiedCount} unverified`
@@ -1438,6 +1503,15 @@ export function EditorOverviewPane({
                       <DSText variant="caption" tone="secondary">
                         ✓ Drafted Grade-6 summaries with source-grounded bullets
                       </DSText>
+                      <DSText variant="caption" tone="secondary">
+                        ✓{' '}
+                        {todayData.autoRetriedCount > 0
+                          ? `${todayData.autoRetriedCount} auto-simplified once before reaching you ("Too complex")`
+                          : '0 complexity auto-retries needed'}
+                        {todayData.summarizerFailedCount > 0
+                          ? ` · ${todayData.summarizerFailedCount} failed to draft`
+                          : ''}
+                      </DSText>
                     </View>
 
                     <View
@@ -1459,13 +1533,20 @@ export function EditorOverviewPane({
                           const words = story.source_text
                             ? story.source_text.trim().split(/\s+/).filter(Boolean).length
                             : 0;
+                          const reasonParts: string[] = [];
+                          if (words > 0) {
+                            reasonParts.push(`~${words} words scraped`);
+                          }
+                          if (story.auto_retried_complexity) {
+                            reasonParts.push('Auto-simplified once');
+                          }
                           return (
                             <StoryExplanationItem
                               key={story.id}
                               story={story}
                               reason={
-                                words > 0
-                                  ? `~${words} words scraped`
+                                reasonParts.length > 0
+                                  ? reasonParts.join(' · ')
                                   : undefined
                               }
                               onOpenStory={handleOpenStory}
@@ -1714,6 +1795,78 @@ export function EditorOverviewPane({
                 )}
               </DSSurface>
             ) : null}
+
+            {(() => {
+              const autoRetriedStories = todayData.todayItems.filter(
+                (a) =>
+                  Boolean(a.auto_retried_complexity) ||
+                  (a.retry_history?.length ?? 0) > 0
+              );
+              if (autoRetriedStories.length === 0) return null;
+              return (
+                <DSSurface
+                  variant="muted"
+                  radius="md"
+                  bordered
+                  style={{
+                    padding: theme.spacing.lg,
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: theme.spacing.sm,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: theme.spacing.sm,
+                      }}
+                    >
+                      <DSBadge label="Self-Corrected" tone="info" />
+                      <DSText variant="subhead" weight="bold" tone="primary">
+                        Auto-simplified by agents today ({autoRetriedStories.length})
+                      </DSText>
+                    </View>
+                    <DSText variant="caption" tone="secondary">
+                      Click any story to view Judge scores & Draft 1 → Draft 2 diff
+                    </DSText>
+                  </View>
+
+                  <View style={{ gap: 4 }}>
+                    {autoRetriedStories.slice(0, 5).map((story) => {
+                      const hasDiff = (story.retry_history?.length ?? 0) > 0;
+                      const conf = Math.round(story.confidence_score ?? 0);
+                      const retryTrigger = story.retry_history?.[0]?.trigger;
+                      return (
+                        <StoryExplanationItem
+                          key={`auto-${story.id}`}
+                          story={story}
+                          reason={
+                            hasDiff
+                              ? `${retryTrigger ?? 'Too complex'} · Confidence ${conf}/100 · Draft 1 → Draft 2 diff ready`
+                              : `Auto-simplified once · Confidence ${conf}/100`
+                          }
+                          onOpenStory={handleOpenStory}
+                        />
+                      );
+                    })}
+                    {autoRetriedStories.length > 5 ? (
+                      <DSText variant="caption" tone="tertiary">
+                        + {autoRetriedStories.length - 5} more auto-simplified
+                        today (expand Step 3 to see all)
+                      </DSText>
+                    ) : null}
+                  </View>
+                </DSSurface>
+              );
+            })()}
         </View>
       </DSCard>
 

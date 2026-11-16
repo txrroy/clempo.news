@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 import { Platform, Text, View } from 'react-native';
 
@@ -45,6 +46,18 @@ export function ThumbIcon({
         </svg>
       </View>
     );
+  }
+
+  if (Platform.OS === 'android') {
+    const iconName =
+      direction === 'up'
+        ? filled
+          ? 'thumbs-up'
+          : 'thumbs-up-outline'
+        : filled
+          ? 'thumbs-down'
+          : 'thumbs-down-outline';
+    return <Ionicons name={iconName} size={size} color={color} />;
   }
 
   const iosName =

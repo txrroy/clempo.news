@@ -4,22 +4,21 @@
 
 :root {
   --font-display:
-    'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif, Apple Color Emoji,
+    'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif, Apple Color Emoji,
     Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
-  --font-mono: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-rounded: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-serif: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-rounded: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-serif: 'Newsreader', Georgia, Cambria, 'Times New Roman', serif;
 }
 
 body {
   font-family: var(--font-display);
 }
 
-.consumer-mobile-reader,
-.consumer-mobile-reader * {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+.consumer-mobile-reader {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 .consumer-display {
-  font-family: 'Bricolage Grotesque', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }

@@ -1,34 +1,38 @@
-import '../global.css';
+import {
+  Newsreader_400Regular,
+  Newsreader_400Regular_Italic,
+  Newsreader_500Medium,
+  Newsreader_600SemiBold,
+  Newsreader_700Bold,
+  useFonts,
+} from '@expo-google-fonts/newsreader';
+import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import '../global.css';
 
-const FONT_STYLESHEETS: Array<{ id: string; href: string }> = [
+const FONT_STYLESHEETS: { id: string; href: string }[] = [
   {
-    id: 'dm-sans-font',
-    href: 'https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&display=swap',
+    id: 'newsreader-font',
+    href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&display=swap',
   },
   {
-    id: 'work-sans-font',
-    href: 'https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,400..700;1,400..700&display=swap',
-  },
-  {
-    id: 'cabinet-grotesk-font',
-    href: 'https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,600,700&display=swap',
-  },
-  {
-    id: 'bricolage-grotesque-font',
-    href: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap',
-  },
-  {
-    id: 'plus-jakarta-sans-font',
-    href: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400..700;1,400..700&display=swap',
+    id: 'inter-font',
+    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   },
 ];
 
 export default function RootLayout() {
+  useFonts({
+    Newsreader_400Regular,
+    Newsreader_400Regular_Italic,
+    Newsreader_500Medium,
+    Newsreader_600SemiBold,
+    Newsreader_700Bold,
+  });
+
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     for (const font of FONT_STYLESHEETS) {

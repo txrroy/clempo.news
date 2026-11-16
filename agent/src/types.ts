@@ -66,6 +66,24 @@ export interface DecisionRecord {
   at: string;
 }
 
+export interface ArticleDraftSnapshot {
+  ai_headline: string;
+  ai_summary: string;
+  ai_explanation?: string;
+  confidence_score: number;
+  confidence_reasoning?: string;
+  scores?: JudgeScores;
+  flags?: ArticleFlag[];
+}
+
+export interface ArticleRetryHistoryEntry {
+  attempt: number;
+  trigger: string;
+  before: ArticleDraftSnapshot;
+  after: ArticleDraftSnapshot;
+  at: string;
+}
+
 export interface PipelineTraceStep {
   step: 'fetch' | 'select' | 'extract' | 'summarize' | 'judge' | 'regenerate';
   agent: string;
@@ -101,6 +119,8 @@ export interface PipelineRunLog {
   ready_count: number;
   needs_check_count: number;
   could_not_verify_count: number;
+  auto_retried_count?: number;
+  summarizer_failed_count?: number;
   shortfall_reason?: string;
   dropped_candidates?: {
     title: string;
@@ -181,6 +201,7 @@ export interface ArticleDocument {
   rejected_at?: string | null;
   source_checked?: boolean;
   auto_retried_complexity?: boolean;
+  retry_history?: ArticleRetryHistoryEntry[];
   decision_history?: DecisionRecord[];
   prompt_version?: string;
   instructions_snapshot?: AgentInstructionsSnapshot;

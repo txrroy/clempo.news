@@ -1,4 +1,4 @@
-import { initializeApp, cert, getApps, type ServiceAccount } from 'firebase-admin/app';
+import { cert, getApps, initializeApp, type ServiceAccount } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { RSS_SOURCES, type RssSource } from '../config';
 import { DEFAULT_ACTIVE_POLICY, DEFAULT_POLICY_SETTINGS } from '../policy';
@@ -24,7 +24,13 @@ export function initFirebaseAdmin(): Firestore {
     });
   }
 
-  return getFirestore();
+  const db = getFirestore();
+  try {
+    db.settings({ ignoreUndefinedProperties: true });
+  } catch {
+    // Ignore if settings were already frozen on an existing Firestore instance
+  }
+  return db;
 }
 
 export async function getExistingArticleUrls(

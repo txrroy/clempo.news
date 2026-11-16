@@ -1,4 +1,5 @@
 import { getTopicVisual } from '@/config/topicConfig';
+import { Fonts, getNewsFontStyle } from '@/constants/theme';
 import {
   formatEditionDate,
   getSourceLabel,
@@ -13,11 +14,6 @@ import {
   type ArticlePreferenceVote,
 } from '@/lib/topicPreferences';
 import type { Article } from '@/types/article';
-import {
-  GlassView,
-  isGlassEffectAPIAvailable,
-  isLiquidGlassAvailable,
-} from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 import {
@@ -37,8 +33,6 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -49,12 +43,12 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-  ZoomIn,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { BookmarkIcon } from './BookmarkIcon';
 import { ThumbIcon } from './ThumbIcon';
 import { TopicIcon } from './TopicIcon';
-import { TopicPatternBanner } from './TopicPatternBanner';
+import { CoverPatternArt, TopicPatternBanner } from './TopicPatternBanner';
 
 interface SwipeCardDeckProps {
   articles: Article[];
@@ -102,84 +96,8 @@ const SPRING_CONFIG = {
   mass: 0.85,
 };
 
-function canUseLiquidGlass(): boolean {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    return isGlassEffectAPIAvailable() && isLiquidGlassAvailable();
-  } catch {
-    return false;
-  }
-}
-
-function GlassTagPill({
-  children,
-  borderColor,
-  primary = true,
-  interactive = false,
-  useNativeGlass = true,
-  style,
-}: {
-  children: ReactNode;
-  borderColor?: string;
-  primary?: boolean;
-  interactive?: boolean;
-  useNativeGlass?: boolean;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const pillBorderColor =
-    borderColor ??
-    (primary ? 'rgba(255, 255, 255, 0.28)' : 'rgba(255, 255, 255, 0.22)');
-
-  if (useNativeGlass && canUseLiquidGlass()) {
-    return (
-      <GlassView
-        glassEffectStyle="regular"
-        colorScheme="dark"
-        tintColor={
-          primary ? 'rgba(28, 25, 23, 0.36)' : 'rgba(28, 25, 23, 0.24)'
-        }
-        isInteractive={interactive}
-        style={[
-          {
-            borderRadius: 999,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: pillBorderColor,
-          },
-          style,
-        ]}
-      >
-        {children}
-      </GlassView>
-    );
-  }
-
-  return (
-    <View
-      style={[
-        {
-          borderRadius: 999,
-          overflow: 'hidden',
-          backgroundColor: primary
-            ? 'rgba(28, 25, 23, 0.44)'
-            : 'rgba(28, 25, 23, 0.32)',
-          borderWidth: 1,
-          borderColor: pillBorderColor,
-          ...(Platform.OS === 'web'
-            ? ({
-                backdropFilter: 'blur(14px) saturate(160%)',
-                WebkitBackdropFilter: 'blur(14px) saturate(160%)',
-                boxShadow:
-                  'inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 4px 12px rgba(0, 0, 0, 0.16)',
-              } as Record<string, unknown>)
-            : {}),
-        },
-        style,
-      ]}
-    >
-      {children}
-    </View>
-  );
+function scaleFont(baseSize: number, fontScale: number): number {
+  return Math.round(baseSize * fontScale * 10) / 10;
 }
 
 function ArticleSummaryPoints({
@@ -190,41 +108,631 @@ function ArticleSummaryPoints({
   fontScale: number;
 }) {
   const points = splitSummaryIntoPoints(article.ai_summary);
-  const summaryFontSize = Math.round(15 * fontScale * 10) / 10;
-  const summaryLineHeight = Math.round(22 * fontScale * 10) / 10;
-  const topicAccent = getTopicVisual(article.topic)?.color ?? '#0D9488';
+  const sansStyle = Fonts?.sans
+    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
+    : {};
+  const sectionLabelSize = scaleFont(13.5, fontScale);
+  const sectionLabelLine = scaleFont(18, fontScale);
+  const leadFontSize = scaleFont(15, fontScale);
+  const leadLineHeight = scaleFont(22, fontScale);
+  const bulletFontSize = scaleFont(14.5, fontScale);
+  const bulletLineHeight = scaleFont(21, fontScale);
 
-  if (points.length <= 1) {
-    const segments = parseAnchorSegments(points[0] ?? article.ai_summary);
+  const leadText = (points[0] ?? article.ai_summary ?? '').trim();
+  const keyPoints = points.slice(1);
+
+  if (!leadText) return null;
+
+  return (
+    <View>
+      <Text
+        style={{
+          ...sansStyle,
+          fontSize: sectionLabelSize,
+          lineHeight: sectionLabelLine,
+          fontWeight: '700',
+          color: '#1C1917',
+          marginBottom: Math.round(4 * fontScale),
+        }}
+      >
+        What happened
+      </Text>
+      <Text
+        style={{
+          ...getNewsFontStyle('400'),
+          fontSize: leadFontSize,
+          lineHeight: leadLineHeight,
+          color: '#44403C',
+        }}
+      >
+        {leadText}
+      </Text>
+
+      {keyPoints.length > 0 ? (
+        <View style={{ marginTop: Math.round(13 * fontScale) }}>
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: sectionLabelSize,
+              lineHeight: sectionLabelLine,
+              fontWeight: '700',
+              color: '#1C1917',
+              marginBottom: Math.round(6 * fontScale),
+            }}
+          >
+            Key developments
+          </Text>
+          <View style={{ gap: Math.round(6 * fontScale) }}>
+            {keyPoints.map((point, ptIdx) => (
+              <View
+                key={ptIdx}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}
+              >
+                <View
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 999,
+                    backgroundColor: '#78716C',
+                    marginTop: Math.round(bulletLineHeight * 0.43),
+                  }}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    ...getNewsFontStyle('400'),
+                    fontSize: bulletFontSize,
+                    lineHeight: bulletLineHeight,
+                    color: '#44403C',
+                  }}
+                >
+                  {point}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Shared editorial card body used across active, next-peek, and previous-pull cards
+ * so transitions never shift typography or metadata placement.
+ */
+function EditorialCardContent({
+  article,
+  fontScale,
+  activeTopic,
+  activePositionLabel,
+  onSelectTopic,
+  onClearTopic,
+  onPressWhyItMatters,
+  wrapSummary,
+}: {
+  article: Article;
+  fontScale: number;
+  activeTopic?: string | null;
+  activePositionLabel?: string;
+  onSelectTopic?: (topic: string) => void;
+  onClearTopic?: () => void;
+  onPressWhyItMatters?: () => void;
+  wrapSummary?: (node: ReactNode) => ReactNode;
+}) {
+  const sansStyle = Fonts?.sans
+    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
+    : {};
+  const cardTags = getArticleTags(article);
+  const shortDate = formatEditionDate(article.date, 'short');
+  const sourceLabel = getSourceLabel(article);
+  const metaLine = [shortDate, sourceLabel]
+    .filter(Boolean)
+    .map((part) => String(part).toUpperCase())
+    .join(' · ');
+  const kickerFontSize = scaleFont(11, fontScale);
+  const summaryNode = (
+    <ArticleSummaryPoints article={article} fontScale={fontScale} />
+  );
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'space-between',
+      }}
+    >
+      <View>
+        {/* Editorial Uppercase Topic Metadata Line */}
+        {activeTopic ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: Math.round(7 * fontScale),
+            }}
+          >
+            <Text
+              style={{
+                ...sansStyle,
+                flexShrink: 1,
+                fontSize: kickerFontSize,
+                fontWeight: '600',
+                letterSpacing: 0.85,
+                color: '#78716C',
+              }}
+              numberOfLines={1}
+            >
+              {activeTopic.toUpperCase()}
+              {activePositionLabel ? ` · ${activePositionLabel}` : ''}
+            </Text>
+            {onClearTopic ? (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  onClearTopic();
+                }}
+                accessibilityLabel="Clear topic filter"
+                hitSlop={8}
+                style={{
+                  ...(Platform.OS === 'web'
+                    ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                    : {}),
+                }}
+              >
+                <Text
+                  style={{
+                    ...sansStyle,
+                    fontSize: kickerFontSize,
+                    fontWeight: '600',
+                    color: '#57534E',
+                  }}
+                >
+                  Clear ✕
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : cardTags.length > 0 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              marginBottom: Math.round(7 * fontScale),
+            }}
+          >
+            {cardTags.map((tag, tagIdx) => {
+              const label = (
+                <Text
+                  style={{
+                    ...sansStyle,
+                    fontSize: kickerFontSize,
+                    fontWeight: '600',
+                    letterSpacing: 0.85,
+                    color: '#78716C',
+                  }}
+                >
+                  {tag.toUpperCase()}
+                </Text>
+              );
+              return (
+                <View
+                  key={tag}
+                  style={{ flexDirection: 'row', alignItems: 'center' }}
+                >
+                  {tagIdx > 0 ? (
+                    <Text
+                      style={{
+                        ...sansStyle,
+                        fontSize: kickerFontSize,
+                        fontWeight: '600',
+                        color: '#A8A29E',
+                        marginHorizontal: 5,
+                      }}
+                    >
+                      ·
+                    </Text>
+                  ) : null}
+                  {onSelectTopic ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        onSelectTopic(tag);
+                      }}
+                      accessibilityLabel={`Filter by ${tag}`}
+                      hitSlop={4}
+                      style={{
+                        ...(Platform.OS === 'web'
+                          ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                          : {}),
+                      }}
+                    >
+                      {label}
+                    </Pressable>
+                  ) : (
+                    label
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {/* Headline */}
+        <Text
+          className="text-ink tracking-[-0.35px]"
+          style={{
+            ...getNewsFontStyle('700'),
+            fontSize: scaleFont(21, fontScale),
+            lineHeight: scaleFont(27, fontScale),
+          }}
+        >
+          {article.ai_headline}
+        </Text>
+
+        {/* Date · Source underneath headline with clean vertical space */}
+        {metaLine ? (
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: kickerFontSize,
+              fontWeight: '500',
+              letterSpacing: 0.6,
+              color: '#A8A29E',
+              marginTop: Math.round(7 * fontScale),
+              marginBottom: Math.round(18 * fontScale),
+            }}
+            numberOfLines={1}
+          >
+            {metaLine}
+          </Text>
+        ) : (
+          <View style={{ height: Math.round(14 * fontScale) }} />
+        )}
+
+        {/* Two-part scannable summary */}
+        {wrapSummary ? wrapSummary(summaryNode) : summaryNode}
+      </View>
+
+      {/* Bottom card utility: Why it matters */}
+      <View
+        style={{
+          marginTop: Math.round(14 * fontScale),
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+        }}
+      >
+        {onPressWhyItMatters ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onPressWhyItMatters();
+            }}
+            accessibilityLabel="Flip card to see why it matters"
+            hitSlop={8}
+            className="active:opacity-60"
+            style={{
+              ...(Platform.OS === 'web'
+                ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                : {}),
+            }}
+          >
+            <Text
+              style={{
+                ...sansStyle,
+                fontSize: scaleFont(12.5, fontScale),
+                fontWeight: '500',
+                color: '#78716C',
+              }}
+            >
+              Why it matters ↻
+            </Text>
+          </Pressable>
+        ) : (
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: scaleFont(12.5, fontScale),
+              fontWeight: '500',
+              color: '#78716C',
+            }}
+          >
+            Why it matters ↻
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Calm opening cover card for Today's Edition that anchors the date, finite swipe count,
+ * and anti-doomscrolling boundary before entering the headlines.
+ */
+interface EditionCoverMeta {
+  storyCount: number;
+  readMinutes: number;
+  topics: string[];
+  editedAgoText: string | null;
+}
+
+/**
+ * Calm pastel opening cover card for Today's Edition showing a readable date,
+ * time estimate, preview of today's topics, anti-doomscrolling boundary, and editor credit.
+ */
+function EditionCoverContent({
+  article,
+  editionMeta,
+  fontScale,
+  onStart,
+}: {
+  article: Article;
+  editionMeta: EditionCoverMeta;
+  fontScale: number;
+  onStart?: () => void;
+}) {
+  const sansStyle = Fonts?.sans
+    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
+    : {};
+  const fullDate = formatEditionDate(article.date, 'full');
+  const { storyCount, readMinutes, topics, editedAgoText } = editionMeta;
+  const previewTopics = topics.slice(0, 6);
+  const estimateLine = `${storyCount} ${storyCount === 1 ? 'story' : 'stories'}. About ${readMinutes} ${readMinutes === 1 ? 'minute' : 'minutes'}.`;
+  const editorCredit = editedAgoText
+    ? `Edited by Tushar Roy, ${editedAgoText}`
+    : 'Edited by Tushar Roy';
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 26,
+        paddingTop: 58,
+        paddingBottom: 38,
+      }}
+    >
+      <CoverPatternArt />
+
+      {/* High-contrast Readable Date + Greeting + Time Estimate */}
+      <View style={{ alignItems: 'center', width: '100%', maxWidth: 320 }}>
+        {fullDate ? (
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: scaleFont(14, fontScale),
+              fontWeight: '600',
+              letterSpacing: 0.1,
+              color: '#292524',
+              textAlign: 'center',
+              marginBottom: Math.round(12 * fontScale),
+            }}
+          >
+            {fullDate}
+          </Text>
+        ) : null}
+
+        <Text
+          className="text-ink text-center tracking-[-0.45px]"
+          style={{
+            ...getNewsFontStyle('700'),
+            fontSize: scaleFont(25.5, fontScale),
+            lineHeight: scaleFont(31, fontScale),
+            marginBottom: Math.round(10 * fontScale),
+          }}
+        >
+          Welcome curious reader!
+        </Text>
+
+        {storyCount > 0 ? (
+          <Text
+            className="text-center"
+            style={{
+              ...getNewsFontStyle('500'),
+              fontSize: scaleFont(15.5, fontScale),
+              lineHeight: scaleFont(22, fontScale),
+              color: '#57534E',
+            }}
+          >
+            {estimateLine}{' '}
+            <Text style={{ color: '#0F766E', ...getNewsFontStyle('600') }}>
+              No doomscrolling.
+            </Text>
+          </Text>
+        ) : (
+          <Text
+            className="text-center"
+            style={{
+              ...getNewsFontStyle('500'),
+              fontSize: scaleFont(15.5, fontScale),
+              lineHeight: scaleFont(22, fontScale),
+              color: '#0F766E',
+            }}
+          >
+            No doomscrolling.
+          </Text>
+        )}
+      </View>
+
+      {/* Topic Icons Preview of Today's Edition */}
+      {previewTopics.length > 0 ? (
+        <View
+          style={{
+            width: '100%',
+            maxWidth: 300,
+            alignItems: 'center',
+            marginVertical: Math.round(8 * fontScale),
+          }}
+        >
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: scaleFont(11, fontScale),
+              fontWeight: '600',
+              letterSpacing: 0.8,
+              color: '#78716C',
+              marginBottom: Math.round(12 * fontScale),
+            }}
+          >
+            IN TODAY&apos;S EDITION
+          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              columnGap: 14,
+              rowGap: Math.round(12 * fontScale),
+            }}
+          >
+            {previewTopics.map((topicName) => {
+              const visual = getTopicVisual(topicName);
+              const iconColor = visual?.color ?? '#0D9488';
+              const tileBg = visual?.lightBg ?? '#F5F5F4';
+              const iconName = visual?.icon ?? 'default';
+              return (
+                <View
+                  key={topicName}
+                  style={{
+                    width: 80,
+                    alignItems: 'center',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 13,
+                      backgroundColor: tileBg,
+                      borderWidth: 1,
+                      borderColor: 'rgba(28, 25, 23, 0.06)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 5,
+                    }}
+                  >
+                    <TopicIcon name={iconName} color={iconColor} size={18} />
+                  </View>
+                  <Text
+                    style={{
+                      ...sansStyle,
+                      fontSize: scaleFont(11.5, fontScale),
+                      fontWeight: '600',
+                      color: '#44403C',
+                      textAlign: 'center',
+                    }}
+                    numberOfLines={1}
+                  >
+                    {topicName}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Quiet Editorial Start Cue + Editor Credit */}
+      <View style={{ alignItems: 'center' }}>
+        {onStart ? (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onStart();
+            }}
+            accessibilityLabel="Start today's edition"
+            hitSlop={12}
+            className="active:opacity-50"
+            style={{
+              paddingVertical: 4,
+              paddingHorizontal: 8,
+              ...(Platform.OS === 'web'
+                ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                : {}),
+            }}
+          >
+            <Text
+              style={{
+                ...sansStyle,
+                fontSize: scaleFont(15.5, fontScale),
+                fontWeight: '600',
+                color: '#1C1917',
+                letterSpacing: -0.1,
+              }}
+            >
+              Let&apos;s go →
+            </Text>
+          </Pressable>
+        ) : (
+          <Text
+            style={{
+              ...sansStyle,
+              fontSize: scaleFont(15.5, fontScale),
+              fontWeight: '600',
+              color: '#1C1917',
+              letterSpacing: -0.1,
+            }}
+          >
+            Let&apos;s go →
+          </Text>
+        )}
+        <Text
+          style={{
+            ...sansStyle,
+            fontSize: scaleFont(11.5, fontScale),
+            color: '#78716C',
+            textAlign: 'center',
+            marginTop: Math.round(10 * fontScale),
+          }}
+        >
+          {editorCredit}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ArticleContextPoints({
+  article,
+  fontScale,
+}: {
+  article: Article;
+  fontScale: number;
+}) {
+  const explanation = article.ai_explanation?.trim();
+  const points = explanation ? splitSummaryIntoPoints(explanation) : [];
+  const topicVisual = getTopicVisual(article.topic);
+  const topicAccent = topicVisual?.color ?? '#0D9488';
+  const bodyFontSize = scaleFont(15, fontScale);
+  const bodyLineHeight = scaleFont(22, fontScale);
+
+  if (points.length === 0) {
     return (
       <Text
         style={{
-          fontSize: summaryFontSize,
-          lineHeight: summaryLineHeight,
+          ...getNewsFontStyle('400'),
+          fontSize: bodyFontSize,
+          lineHeight: bodyLineHeight,
           color: '#57534E',
         }}
       >
-        {segments.map((seg, idx) => (
-          <Text
-            key={idx}
-            style={
-              seg.isAnchor
-                ? {
-                    fontWeight: '600',
-                    color: '#1C1917',
-                  }
-                : undefined
-            }
-          >
-            {seg.text}
-          </Text>
-        ))}
+        Tap anywhere to return to the story.
       </Text>
     );
   }
 
   return (
-    <View style={{ gap: Math.round(7 * fontScale) }}>
+    <View style={{ gap: Math.round(11 * fontScale) }}>
       {points.map((point, ptIdx) => {
         const segments = parseAnchorSegments(point);
         return (
@@ -232,26 +740,26 @@ function ArticleSummaryPoints({
             key={ptIdx}
             style={{
               flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 8,
+              alignItems: 'stretch',
+              gap: 10,
+              paddingVertical: 1,
             }}
           >
             <View
               style={{
-                width: 5,
-                height: 5,
+                width: 3,
                 borderRadius: 999,
                 backgroundColor: topicAccent,
-                marginTop: Math.round(summaryLineHeight * 0.4),
-                opacity: 0.85,
+                opacity: ptIdx === 0 ? 0.95 : 0.42,
               }}
             />
             <Text
               style={{
                 flex: 1,
-                fontSize: summaryFontSize,
-                lineHeight: summaryLineHeight,
-                color: '#57534E',
+                ...getNewsFontStyle('400'),
+                fontSize: bodyFontSize,
+                lineHeight: bodyLineHeight,
+                color: '#44403C',
               }}
             >
               {segments.map((seg, segIdx) => (
@@ -260,9 +768,9 @@ function ArticleSummaryPoints({
                   style={
                     seg.isAnchor
                       ? {
-                          fontWeight: '600',
-                          color: '#1C1917',
-                        }
+                        ...getNewsFontStyle('600'),
+                        color: '#1C1917',
+                      }
                       : undefined
                   }
                 >
@@ -277,6 +785,947 @@ function ArticleSummaryPoints({
   );
 }
 
+/**
+ * Keyed card slot whose position, scale, shadow, and opacity are driven solely on the UI thread
+ * by `activeIdxSV` so swiping forward or pulling backward never flashes or unmounts mid-transition.
+ */
+function DeckSlotCard({
+  cardIndex,
+  activeIdxSV,
+  translateX,
+  translateY,
+  prevTranslateY,
+  cardHeightSV,
+  width,
+  isInteractive,
+  children,
+}: {
+  cardIndex: number;
+  activeIdxSV: SharedValue<number>;
+  translateX: SharedValue<number>;
+  translateY: SharedValue<number>;
+  prevTranslateY: SharedValue<number>;
+  cardHeightSV: SharedValue<number>;
+  width: number;
+  isInteractive: boolean;
+  children: ReactNode;
+}) {
+  const slotStyle = useAnimatedStyle(() => {
+    const activeIdx = activeIdxSV.value;
+    const offscreenY = -(cardHeightSV.value + 120);
+
+    if (cardIndex === activeIdx) {
+      const rotateDeg = interpolate(
+        translateX.value,
+        [-width * 0.6, 0, width * 0.6],
+        [-5.5, 0, 5.5],
+        Extrapolation.CLAMP
+      );
+      return {
+        opacity: 1,
+        zIndex: 4,
+        elevation: 4,
+        transform: [
+          { translateX: translateX.value },
+          { translateY: translateY.value },
+          { rotate: `${rotateDeg}deg` },
+          { scaleX: 1 },
+        ],
+      };
+    }
+
+    if (cardIndex === activeIdx - 1) {
+      const isVisible = prevTranslateY.value > offscreenY + 8;
+      const entryStart = -cardHeightSV.value;
+      const opacity = interpolate(
+        prevTranslateY.value,
+        [offscreenY, entryStart - 16, entryStart + 18],
+        [0, 0, 1],
+        Extrapolation.CLAMP
+      );
+      const scale = interpolate(
+        prevTranslateY.value,
+        [entryStart, -56, 0],
+        [1.018, 1.018, 1],
+        Extrapolation.CLAMP
+      );
+      return {
+        opacity: isVisible ? opacity : 0,
+        zIndex: isVisible ? 10 : -1,
+        elevation: isVisible ? 16 : 0,
+        transform: [
+          { translateX: 0 },
+          { translateY: prevTranslateY.value },
+          { rotate: '0deg' },
+          { scaleX: scale },
+        ],
+      };
+    }
+
+    if (cardIndex === activeIdx + 1) {
+      const forwardDist = Math.max(
+        0,
+        Math.abs(translateX.value),
+        -translateY.value
+      );
+      const progress = interpolate(
+        forwardDist,
+        [0, width * 0.45],
+        [0, 1],
+        Extrapolation.CLAMP
+      );
+      const offsetY = interpolate(progress, [0, 1], [-6, 0]);
+      const scaleX = interpolate(progress, [0, 1], [0.94, 1]);
+      const opacity = interpolate(progress, [0, 1], [0.96, 1]);
+      return {
+        opacity,
+        zIndex: 2,
+        elevation: 2,
+        transform: [
+          { translateX: 0 },
+          { translateY: offsetY },
+          { rotate: '0deg' },
+          { scaleX },
+        ],
+      };
+    }
+
+    if (cardIndex === activeIdx + 2) {
+      const forwardDist = Math.max(
+        0,
+        Math.abs(translateX.value),
+        -translateY.value
+      );
+      const progress = interpolate(
+        forwardDist,
+        [0, width * 0.45],
+        [0, 1],
+        Extrapolation.CLAMP
+      );
+      const offsetY = interpolate(progress, [0, 1], [-12, -6]);
+      const scaleX = interpolate(progress, [0, 1], [0.88, 0.94]);
+      const opacity = interpolate(progress, [0, 1], [0.92, 0.96]);
+      return {
+        opacity,
+        zIndex: 1,
+        elevation: 1,
+        transform: [
+          { translateX: 0 },
+          { translateY: offsetY },
+          { rotate: '0deg' },
+          { scaleX },
+        ],
+      };
+    }
+
+    return {
+      opacity: 0,
+      zIndex: -2,
+      elevation: 0,
+      transform: [
+        { translateX: 0 },
+        { translateY: offscreenY },
+        { rotate: '0deg' },
+        { scaleX: 1 },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents={isInteractive ? 'auto' : 'none'}
+      style={[
+        slotStyle,
+        {
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          ...(Platform.OS === 'web'
+            ? ({
+              touchAction: 'none',
+              userSelect: 'none',
+            } as Record<string, unknown>)
+            : {}),
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/**
+ * Self-contained front + back faces for a single article card inside a `DeckSlotCard`.
+ * Keeping per-card `imageTier` and `imageLoadFailed` local prevents layout shifts when a
+ * peeking card promotes to the active slot.
+ */
+function ArticleDeckCard({
+  article,
+  cardIndex,
+  totalArticles,
+  isActive,
+  isFlipped,
+  activeIdxSV,
+  flipProgress,
+  isFlippedSV,
+  editionMeta,
+  showImages,
+  baseImageTier,
+  fontScale,
+  activeTopic,
+  onSelectTopic,
+  onClearTopic,
+  onStartEdition,
+  toggleFlip,
+  currentVote,
+  isSaved,
+  onVote,
+  onToggleSave,
+  contextFeedback,
+  contextNoteText,
+  onChangeContextNoteText,
+  contextNoteInputRef,
+  sendingContextNote,
+  onCancelContextNote,
+  onSendContextNote,
+  onContextFeedback,
+  showFlipTip,
+  showTopicTip,
+}: {
+  article: Article;
+  cardIndex: number;
+  totalArticles: number;
+  isActive: boolean;
+  isFlipped: boolean;
+  activeIdxSV: SharedValue<number>;
+  flipProgress: SharedValue<number>;
+  isFlippedSV: SharedValue<boolean>;
+  editionMeta: EditionCoverMeta;
+  showImages: boolean;
+  baseImageTier: 0 | 1 | 2;
+  fontScale: number;
+  activeTopic?: string | null;
+  onSelectTopic?: (topic: string) => void;
+  onClearTopic?: () => void;
+  onStartEdition: () => void;
+  toggleFlip: () => void;
+  currentVote?: ArticlePreferenceVote;
+  isSaved: boolean;
+  onVote: (article: Article, vote: ArticlePreferenceVote) => Promise<void>;
+  onToggleSave: (article: Article) => void;
+  contextFeedback?: {
+    sentiment: 'helpful' | 'not_helpful';
+    step: 'note' | 'sent';
+    docId?: string;
+  };
+  contextNoteText: string;
+  onChangeContextNoteText: (text: string) => void;
+  contextNoteInputRef: React.RefObject<ComponentRef<typeof TextInput> | null>;
+  sendingContextNote: boolean;
+  onCancelContextNote: (articleId: string) => void;
+  onSendContextNote: (articleId: string) => Promise<void>;
+  onContextFeedback: (
+    article: Article,
+    sentiment: 'helpful' | 'not_helpful'
+  ) => Promise<void>;
+  showFlipTip: boolean;
+  showTopicTip: boolean;
+}) {
+  const [overflowTier, setOverflowTier] = useState<0 | 1 | 2>(0);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const areaHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+
+  const imageTier = Math.max(baseImageTier, overflowTier) as 0 | 1 | 2;
+
+  const isCover = article.id === '__ftue_welcome__';
+
+  const flipTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(250)
+        .maxDistance(10)
+        .onEnd(() => {
+          if (isCover) return;
+          if (cardIndex !== activeIdxSV.value || isFlippedSV.value) return;
+          runOnJS(toggleFlip)();
+        }),
+    [activeIdxSV, cardIndex, isCover, isFlippedSV, toggleFlip]
+  );
+
+  const cardFrontFaceStyle = useAnimatedStyle(() => {
+    if (cardIndex !== activeIdxSV.value) {
+      return {
+        opacity: 1,
+        transform: [{ perspective: 1200 }, { rotateY: '0deg' }],
+        backfaceVisibility: 'hidden' as const,
+      };
+    }
+    const rotateY = interpolate(flipProgress.value, [0, 1], [0, 180]);
+    const opacity = interpolate(
+      flipProgress.value,
+      [0, 0.49, 0.5, 1],
+      [1, 1, 0, 0]
+    );
+    return {
+      opacity,
+      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
+      backfaceVisibility: 'hidden' as const,
+    };
+  });
+
+  const cardBackFaceStyle = useAnimatedStyle(() => {
+    if (cardIndex !== activeIdxSV.value) {
+      return {
+        opacity: 0,
+        transform: [{ perspective: 1200 }, { rotateY: '180deg' }],
+        backfaceVisibility: 'hidden' as const,
+      };
+    }
+    const rotateY = interpolate(flipProgress.value, [0, 1], [180, 360]);
+    const opacity = interpolate(
+      flipProgress.value,
+      [0, 0.49, 0.5, 1],
+      [0, 0, 1, 1]
+    );
+    return {
+      opacity,
+      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
+      backfaceVisibility: 'hidden' as const,
+    };
+  });
+
+  const handleBodyAreaLayout = useCallback((layoutHeight: number) => {
+    areaHeightRef.current = layoutHeight - 40;
+    if (
+      areaHeightRef.current > 0 &&
+      contentHeightRef.current > areaHeightRef.current + 2
+    ) {
+      setOverflowTier((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2));
+    }
+  }, []);
+
+  const handleBodyContentLayout = useCallback((layoutHeight: number) => {
+    contentHeightRef.current = layoutHeight;
+    if (
+      areaHeightRef.current > 0 &&
+      contentHeightRef.current > areaHeightRef.current + 2
+    ) {
+      setOverflowTier((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2));
+    }
+  }, []);
+
+  const showingPhoto = Boolean(showImages && article.image_url && !imageLoadFailed);
+  const bannerHeight = showingPhoto
+    ? imageTier === 0
+      ? 175
+      : imageTier === 1
+        ? 88
+        : 44
+    : imageTier === 0
+      ? 104
+      : imageTier === 1
+        ? 74
+        : 44;
+
+  const isLiked = currentVote === 'like';
+  const isDisliked = currentVote === 'dislike';
+
+  const frontContent = isCover ? (
+    <EditionCoverContent
+      article={article}
+      editionMeta={editionMeta}
+      fontScale={fontScale}
+      onStart={onStartEdition}
+    />
+  ) : (
+    <>
+      <View
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: bannerHeight,
+          overflow: 'hidden',
+        }}
+      >
+        <GestureDetector gesture={flipTapGesture}>
+          <View style={{ width: '100%', height: '100%' }}>
+            {showingPhoto && article.image_url ? (
+              <Image
+                source={{ uri: article.image_url }}
+                recyclingKey={article.id}
+                contentFit="cover"
+                transition={0}
+                onError={() => setImageLoadFailed(true)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: '#F1EFEA',
+                }}
+              />
+            ) : (
+              <TopicPatternBanner topic={article.topic} />
+            )}
+          </View>
+        </GestureDetector>
+      </View>
+
+      <GestureDetector gesture={flipTapGesture}>
+        <View
+          onLayout={(e) => handleBodyAreaLayout(e.nativeEvent.layout.height)}
+          style={{
+            flex: 1,
+            padding: 20,
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            onLayout={(e) =>
+              handleBodyContentLayout(e.nativeEvent.layout.height)
+            }
+            style={{ flex: 1 }}
+          >
+            <EditorialCardContent
+              article={article}
+              fontScale={fontScale}
+              activeTopic={activeTopic}
+              activePositionLabel={
+                activeTopic
+                  ? `${Math.min(cardIndex + 1, totalArticles)} of ${totalArticles}`
+                  : undefined
+              }
+              onSelectTopic={onSelectTopic}
+              onClearTopic={onClearTopic}
+              onPressWhyItMatters={toggleFlip}
+            />
+          </View>
+        </View>
+      </GestureDetector>
+
+      {/* Quieter Card Front Footer: Dislike (left) + Save for later / Like (right) */}
+      <View
+        style={{
+          paddingHorizontal: 22,
+          paddingBottom: 14,
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(28, 25, 23, 0.05)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation?.();
+            void onVote(article, 'dislike');
+          }}
+          accessibilityLabel="Dislike this story"
+          accessibilityState={{ selected: isDisliked }}
+          hitSlop={10}
+          className="active:opacity-60"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isDisliked
+              ? 'rgba(220, 38, 38, 0.08)'
+              : 'transparent',
+            ...(Platform.OS === 'web'
+              ? ({ cursor: 'pointer' } as Record<string, unknown>)
+              : {}),
+          }}
+        >
+          <ThumbIcon
+            direction="down"
+            filled={isDisliked}
+            color={isDisliked ? '#DC2626' : '#78716C'}
+            size={16}
+          />
+        </Pressable>
+        <View className="flex-row items-center gap-3">
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              onToggleSave(article);
+            }}
+            accessibilityLabel={
+              isSaved ? 'Remove from saved for later' : 'Save story for later'
+            }
+            accessibilityState={{ selected: isSaved }}
+            hitSlop={10}
+            className="active:opacity-60"
+            style={{
+              height: 34,
+              paddingHorizontal: isSaved ? 10 : 6,
+              borderRadius: 999,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              backgroundColor: isSaved
+                ? 'rgba(13, 148, 136, 0.08)'
+                : 'transparent',
+              ...(Platform.OS === 'web'
+                ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                : {}),
+            }}
+          >
+            <BookmarkIcon
+              filled={isSaved}
+              color={isSaved ? '#0D9488' : '#78716C'}
+              size={15}
+            />
+            {isSaved ? (
+              <Text
+                className="font-semibold text-accent"
+                style={{ fontSize: scaleFont(11, fontScale) }}
+              >
+                Saved
+              </Text>
+            ) : null}
+          </Pressable>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation?.();
+              void onVote(article, 'like');
+            }}
+            accessibilityLabel="Like this story"
+            accessibilityState={{ selected: isLiked }}
+            hitSlop={10}
+            className="active:opacity-60"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isLiked
+                ? 'rgba(13, 148, 136, 0.08)'
+                : 'transparent',
+              ...(Platform.OS === 'web'
+                ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                : {}),
+            }}
+          >
+            <ThumbIcon
+              direction="up"
+              filled={isLiked}
+              color={isLiked ? '#0D9488' : '#78716C'}
+              size={16}
+            />
+          </Pressable>
+        </View>
+      </View>
+
+      {isActive && showFlipTip ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            bottom: 66,
+            left: 20,
+            right: 20,
+            alignItems: 'center',
+            zIndex: 15,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: '#fefaef',
+              borderRadius: 999,
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderWidth: 1,
+              borderColor: 'rgba(28, 25, 23, 0.14)',
+              boxShadow: '0 6px 16px rgba(28, 25, 23, 0.14)',
+            }}
+          >
+            <Text
+              className="font-medium text-ink"
+              style={{ fontSize: scaleFont(13, fontScale) }}
+            >
+              👆 Tap to flip cards
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {isActive && showTopicTip ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: bannerHeight + 38,
+            left: 20,
+            zIndex: 15,
+            alignItems: 'flex-start',
+          }}
+        >
+          <View
+            style={{
+              marginLeft: 14,
+              width: 0,
+              height: 0,
+              borderLeftWidth: 7,
+              borderRightWidth: 7,
+              borderBottomWidth: 8,
+              borderLeftColor: 'transparent',
+              borderRightColor: 'transparent',
+              borderBottomColor: '#fefaef',
+            }}
+          />
+          <View
+            style={{
+              backgroundColor: '#fefaef',
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderWidth: 1,
+              borderColor: 'rgba(28, 25, 23, 0.14)',
+              boxShadow: '0 6px 16px rgba(28, 25, 23, 0.16)',
+            }}
+          >
+            <Text
+              className="font-medium text-ink"
+              style={{ fontSize: scaleFont(12.5, fontScale) }}
+            >
+              Tap here to focus on a subject
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* FRONT FACE */}
+      <Animated.View
+        pointerEvents={!isActive || isFlipped ? 'none' : 'auto'}
+        style={[
+          {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: 26,
+            overflow: 'hidden',
+            backgroundColor: isCover ? '#fefaef' : '#FFFFFF',
+            borderWidth: Platform.OS === 'web' ? 0 : 1,
+            borderColor: 'rgba(28, 25, 23, 0.08)',
+            boxShadow:
+              '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
+            shadowColor: '#1C1917',
+            shadowOpacity: 0.1,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 10 },
+          },
+          cardFrontFaceStyle,
+        ]}
+      >
+        {frontContent}
+      </Animated.View>
+
+      {/* BACK FACE (seeded with opacity: 0 before animated style applies so mount never flashes) */}
+      {isActive && !isCover ? (
+        <Animated.View
+          pointerEvents={isFlipped ? 'auto' : 'none'}
+          style={[
+            {
+              opacity: 0,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 26,
+              overflow: 'hidden',
+              backgroundColor: '#FAF8F4',
+              borderWidth: Platform.OS === 'web' ? 0 : 1,
+              borderColor: 'rgba(28, 25, 23, 0.08)',
+              boxShadow:
+                '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
+              shadowColor: '#1C1917',
+              shadowOpacity: 0.1,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 10 },
+              justifyContent: 'space-between',
+            },
+            cardBackFaceStyle,
+          ]}
+        >
+          <View style={{ flex: 1, minHeight: 0 }}>
+            <View
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: bannerHeight,
+                overflow: 'hidden',
+              }}
+            >
+              <Pressable onPress={toggleFlip} style={{ flex: 1 }}>
+                <TopicPatternBanner topic={article.topic} reverse />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                flexGrow: 1,
+                paddingHorizontal: 20,
+                paddingTop: 20,
+                paddingBottom: 16,
+              }}
+            >
+              <Pressable
+                onPress={toggleFlip}
+                style={{ flex: 1, justifyContent: 'space-between' }}
+              >
+                <View>
+                  <View className="flex-row items-center gap-2 mb-2 min-w-0">
+                    <Text
+                      className="flex-shrink"
+                      style={{
+                        ...(Fonts?.sans
+                          ? ({ fontFamily: Fonts.sans } as Record<
+                              string,
+                              unknown
+                            >)
+                          : {}),
+                        fontSize: scaleFont(12, fontScale),
+                        fontWeight: '600',
+                        letterSpacing: 0.5,
+                        color: '#78716C',
+                      }}
+                      numberOfLines={1}
+                    >
+                      Why it matters
+                    </Text>
+                  </View>
+
+                  <Text
+                    className="tracking-[-0.25px]"
+                    style={{
+                      ...getNewsFontStyle('600'),
+                      fontSize: scaleFont(16.5, fontScale),
+                      lineHeight: scaleFont(22, fontScale),
+                      color: '#57534E',
+                      marginBottom: Math.round(14 * fontScale),
+                    }}
+                    numberOfLines={2}
+                  >
+                    {article.ai_headline}
+                  </Text>
+
+                  <ArticleContextPoints
+                    article={article}
+                    fontScale={fontScale}
+                  />
+                </View>
+
+                <View
+                  style={{
+                    marginTop: Math.round(16 * fontScale),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
+                >
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      toggleFlip();
+                    }}
+                    accessibilityLabel="Flip back to story"
+                    hitSlop={8}
+                    className="active:opacity-60"
+                    style={{
+                      ...(Platform.OS === 'web'
+                        ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                        : {}),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        ...(Fonts?.sans
+                          ? ({ fontFamily: Fonts.sans } as Record<
+                              string,
+                              unknown
+                            >)
+                          : {}),
+                        fontSize: scaleFont(12.5, fontScale),
+                        fontWeight: '500',
+                        color: '#78716C',
+                      }}
+                    >
+                      ↻ Story
+                    </Text>
+                  </Pressable>
+
+                  {article.original_url ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        void openArticleUrl(article.original_url);
+                      }}
+                      accessibilityLabel="Read source article"
+                      hitSlop={6}
+                      className="active:opacity-75"
+                      style={{
+                        paddingHorizontal: 13,
+                        paddingVertical: 6.5,
+                        borderRadius: 999,
+                        backgroundColor: '#F0FDFA',
+                        borderWidth: 1,
+                        borderColor: 'rgba(13, 148, 136, 0.28)',
+                        ...(Platform.OS === 'web'
+                          ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                          : {}),
+                      }}
+                    >
+                      <Text
+                        className="font-semibold"
+                        style={{
+                          ...(Fonts?.sans
+                            ? ({ fontFamily: Fonts.sans } as Record<
+                                string,
+                                unknown
+                              >)
+                            : {}),
+                          fontSize: scaleFont(12.5, fontScale),
+                          color: '#0F766E',
+                        }}
+                      >
+                        Read source ↗
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </Pressable>
+            </ScrollView>
+          </View>
+
+          <View
+            style={{
+              paddingHorizontal: 20,
+              paddingTop: 12,
+              paddingBottom: 16,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(28, 25, 23, 0.07)',
+              backgroundColor: '#F4F1EA',
+            }}
+          >
+            <View>
+              {contextFeedback?.step === 'note' ? (
+                <View className="w-full">
+                  <Text
+                    className="font-medium text-ink mb-2"
+                    style={{ fontSize: scaleFont(13, fontScale) }}
+                  >
+                    Thanks! Add another line?
+                  </Text>
+                  <TextInput
+                    ref={contextNoteInputRef}
+                    value={contextNoteText}
+                    onChangeText={onChangeContextNoteText}
+                    placeholder="Write a quick note..."
+                    placeholderTextColor="#A8A29E"
+                    multiline
+                    style={{ fontSize: scaleFont(14, fontScale) }}
+                    className="w-full bg-[#F5F4F0] border border-stone-200 rounded-2xl px-3.5 py-2.5 text-ink min-h-[68px] mb-2.5"
+                  />
+                  <View className="flex-row items-center justify-end gap-2">
+                    <Pressable
+                      onPress={() => onCancelContextNote(article.id)}
+                      disabled={sendingContextNote}
+                      className="px-3.5 py-1.5 rounded-full active:opacity-60"
+                    >
+                      <Text
+                        className="font-medium text-stone-500"
+                        style={{ fontSize: scaleFont(13, fontScale) }}
+                      >
+                        Cancel
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void onSendContextNote(article.id)}
+                      disabled={sendingContextNote}
+                      className="px-4 py-1.5 rounded-full bg-ink active:opacity-80"
+                    >
+                      <Text
+                        className="font-semibold text-white"
+                        style={{ fontSize: scaleFont(13, fontScale) }}
+                      >
+                        {sendingContextNote ? 'Sending...' : 'Send'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <Text
+                    className="font-medium text-stone-500 mb-2.5"
+                    style={{ fontSize: scaleFont(13, fontScale) }}
+                  >
+                    Was it helpful?
+                  </Text>
+                  {contextFeedback ? (
+                    <Text
+                      className="font-medium text-accent"
+                      style={{ fontSize: scaleFont(13, fontScale) }}
+                    >
+                      Thanks for your feedback! (
+                      {contextFeedback.sentiment === 'helpful'
+                        ? '😊 Yes, thanks'
+                        : '😞 Not really'}
+                      )
+                    </Text>
+                  ) : (
+                    <View className="flex-row flex-wrap items-center gap-2">
+                      <Pressable
+                        onPress={() => void onContextFeedback(article, 'helpful')}
+                        className="px-3.5 py-2 rounded-full bg-white border border-stone-200 active:opacity-70"
+                      >
+                        <Text
+                          className="font-medium text-ink"
+                          style={{ fontSize: scaleFont(13, fontScale) }}
+                        >
+                          😊 Yes, thanks
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          void onContextFeedback(article, 'not_helpful')
+                        }
+                        className="px-3.5 py-2 rounded-full bg-white border border-stone-200 active:opacity-70"
+                      >
+                        <Text
+                          className="font-medium text-ink"
+                          style={{ fontSize: scaleFont(13, fontScale) }}
+                        >
+                          😞 Not really
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          </View>
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
 export function SwipeCardDeck({
   articles,
   onIndexChange,
@@ -285,7 +1734,7 @@ export function SwipeCardDeck({
   onSelectTopic,
   onClearTopic,
   showOnboardingTips = false,
-  showImages = true,
+  showImages = false,
   fontScale = 1,
   savedArticleIds: controlledSavedIds,
   savedCount,
@@ -321,20 +1770,18 @@ export function SwipeCardDeck({
   const [sendingContextNote, setSendingContextNote] = useState(false);
   const [localSavedIds, setLocalSavedIds] = useState<Record<string, boolean>>({});
   const effectiveSavedIds = controlledSavedIds ?? localSavedIds;
-  const [imageTier, setImageTier] = useState<0 | 1 | 2>(0);
-  const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const [nextImageLoadFailed, setNextImageLoadFailed] = useState(false);
-  const [prevImageLoadFailed, setPrevImageLoadFailed] = useState(false);
   const [flipTipDismissed, setFlipTipDismissed] = useState(false);
   const [topicTipDismissed, setTopicTipDismissed] = useState(false);
-  const textAreaHeightRef = useRef(0);
-  const textContentHeightRef = useRef(0);
   const noteInputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const contextNoteInputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contextFeedbackDocPromisesRef = useRef<
     Record<string, Promise<string | null>>
   >({});
+  const onIndexChangeRef = useRef(onIndexChange);
+  useEffect(() => {
+    onIndexChangeRef.current = onIndexChange;
+  }, [onIndexChange]);
 
   useEffect(() => {
     return () => {
@@ -345,6 +1792,9 @@ export function SwipeCardDeck({
   }, []);
   const { width, height } = useWindowDimensions();
 
+  const activeIdxSV = useSharedValue(0);
+  const articlesLenSV = useSharedValue(articles.length);
+  const hasOlderNewsSV = useSharedValue(Boolean(onRequestOlderNews));
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const windowHeightSV = useSharedValue(height);
@@ -352,45 +1802,26 @@ export function SwipeCardDeck({
   const prevTranslateY = useSharedValue(-Math.max(height, 1000) - 200);
   const isPullingPrev = useSharedValue(false);
   const flipProgress = useSharedValue(0);
-  const nextCardBlur = useSharedValue(6);
+  const isFlippedSV = useSharedValue(false);
   const isAnimating = useSharedValue(false);
-  const summaryFocusOpacity = useSharedValue(0.68);
 
   useEffect(() => {
     windowHeightSV.value = height;
   }, [height, windowHeightSV]);
 
-  const prevArticle = currentIndex > 0 ? (articles[currentIndex - 1] ?? null) : null;
-  const currentArticle = articles[currentIndex] ?? null;
-  const nextArticle = articles[currentIndex + 1] ?? null;
-  const thirdArticle = articles[currentIndex + 2] ?? null;
+  useEffect(() => {
+    articlesLenSV.set(articles.length);
+  }, [articles.length, articlesLenSV]);
+
+  useEffect(() => {
+    hasOlderNewsSV.set(Boolean(onRequestOlderNews));
+  }, [onRequestOlderNews, hasOlderNewsSV]);
 
   const baseImageTier = useMemo<0 | 1 | 2>(() => {
     if (fontScale >= 1.2) return 2;
     if (fontScale >= 1.08) return 1;
     return 0;
   }, [fontScale]);
-
-  useEffect(() => {
-    setImageTier(baseImageTier);
-    setImageLoadFailed(false);
-    setNextImageLoadFailed(false);
-    setPrevImageLoadFailed(false);
-    textAreaHeightRef.current = 0;
-    textContentHeightRef.current = 0;
-    // Focus-assisted dimming: start summary gently dimmed so the eye lands on Topic + Headline first, then settle to full contrast
-    summaryFocusOpacity.value = 0.66;
-    summaryFocusOpacity.value = withTiming(1, { duration: 420 });
-  }, [currentArticle?.id, baseImageTier, summaryFocusOpacity]);
-
-  const checkTextOverflow = useCallback(() => {
-    if (
-      textAreaHeightRef.current > 0 &&
-      textContentHeightRef.current > textAreaHeightRef.current + 2
-    ) {
-      setImageTier((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2));
-    }
-  }, []);
 
   const handleToggleSave = useCallback(
     (article: Article) => {
@@ -419,17 +1850,78 @@ export function SwipeCardDeck({
     [articles, effectiveSavedIds]
   );
 
-  const summaryFocusStyle = useAnimatedStyle(() => ({
-    opacity: summaryFocusOpacity.value,
-  }));
+  const [mountNowMs] = useState(() => Date.now());
+
+  const editionMeta = useMemo<EditionCoverMeta>(() => {
+    const storyArticles = articles.filter((a) => a.id !== '__ftue_welcome__');
+    const seenTopics = new Set<string>();
+    const topics: string[] = [];
+    let totalWords = 0;
+    let latestTimestampMs = 0;
+
+    for (const item of storyArticles) {
+      const topicName = item.topic?.trim();
+      if (topicName) {
+        const key = topicName.toLowerCase();
+        if (!seenTopics.has(key)) {
+          seenTopics.add(key);
+          topics.push(topicName);
+        }
+      }
+      const chunk = `${item.ai_headline ?? ''} ${item.ai_summary ?? ''}`.trim();
+      if (chunk) {
+        totalWords += chunk.split(/\s+/).length;
+      }
+      const ts = item.edited_at ?? item.approved_at;
+      if (ts) {
+        const parsed = Date.parse(ts);
+        if (!Number.isNaN(parsed) && parsed > latestTimestampMs) {
+          latestTimestampMs = parsed;
+        }
+      }
+    }
+
+    const readMinutes =
+      storyArticles.length > 0
+        ? Math.max(
+            1,
+            Math.round(Math.max(totalWords / 160, storyArticles.length * 0.42))
+          )
+        : 0;
+
+    let editedAgoText: string | null = null;
+    if (latestTimestampMs > 0) {
+      const diffMs = Math.max(0, mountNowMs - latestTimestampMs);
+      const diffMins = Math.round(diffMs / 60000);
+      if (diffMins < 2) {
+        editedAgoText = 'just now';
+      } else if (diffMins < 60) {
+        editedAgoText = `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+      } else if (diffMins < 60 * 24) {
+        const hrs = Math.max(1, Math.round(diffMins / 60));
+        editedAgoText = `${hrs} ${hrs === 1 ? 'hour' : 'hours'} ago`;
+      } else {
+        const days = Math.max(1, Math.round(diffMins / (60 * 24)));
+        editedAgoText = `${days} ${days === 1 ? 'day' : 'days'} ago`;
+      }
+    }
+
+    return {
+      storyCount: storyArticles.length,
+      topics,
+      readMinutes,
+      editedAgoText,
+    };
+  }, [articles, mountNowMs]);
 
   const horizontalThreshold = Math.min(width * 0.24, 100);
   const verticalThreshold = Math.min(height * 0.16, 100);
 
   const resetFlip = useCallback(() => {
     setIsFlipped(false);
-    flipProgress.value = 0;
-  }, [flipProgress]);
+    isFlippedSV.set(false);
+    flipProgress.set(0);
+  }, [flipProgress, isFlippedSV]);
 
   const toggleFlip = useCallback(() => {
     if (currentIndex === 1) {
@@ -439,13 +1931,16 @@ export function SwipeCardDeck({
     }
     setIsFlipped((prev) => {
       const next = !prev;
-      flipProgress.value = withTiming(next ? 1 : 0, { duration: 320 });
+      isFlippedSV.set(next);
+      flipProgress.set(withTiming(next ? 1 : 0, { duration: 320 }));
       return next;
     });
-  }, [currentIndex, flipProgress]);
+  }, [currentIndex, flipProgress, isFlippedSV]);
 
   // Reset deck to first card when the article list or resetToken changes
   useEffect(() => {
+    activeIdxSV.set(0);
+    articlesLenSV.set(articles.length);
     setCurrentIndex(0);
     resetFlip();
     setFeedbackStep('idle');
@@ -460,8 +1955,8 @@ export function SwipeCardDeck({
       windowHeightSV.value + 200
     );
     isPullingPrev.value = false;
-    onIndexChange?.(0);
-  }, [articles, resetToken, cardHeightSV, isPullingPrev, onIndexChange, prevTranslateY, resetFlip, translateX, translateY, windowHeightSV]);
+    onIndexChangeRef.current?.(0);
+  }, [articles, resetToken, activeIdxSV, articlesLenSV, cardHeightSV, isPullingPrev, prevTranslateY, resetFlip, translateX, translateY, windowHeightSV]);
 
   const handleSelectEmoji = useCallback(async (emoji: string) => {
     setFeedbackStep('note');
@@ -637,8 +2132,8 @@ export function SwipeCardDeck({
   }, []);
 
   useEffect(() => {
-    onIndexChange?.(currentIndex);
-  }, [currentIndex, onIndexChange]);
+    onIndexChangeRef.current?.(currentIndex);
+  }, [currentIndex]);
 
   // Prefetch upcoming article images for instant transitions
   useEffect(() => {
@@ -651,38 +2146,56 @@ export function SwipeCardDeck({
     }
   }, [currentIndex, articles]);
 
-  const commitNext = useCallback(() => {
-    resetFlip();
+  const syncCurrentIndexFromWorklet = useCallback((nextIdx: number) => {
+    setIsFlipped(false);
     setContextNoteText('');
     setSendingContextNote(false);
-    setCurrentIndex((prev) => Math.min(prev + 1, articles.length));
-    isPullingPrev.value = false;
-    prevTranslateY.value = -Math.max(
-      cardHeightSV.value + 120,
-      windowHeightSV.value + 200
-    );
-    translateX.value = 0;
-    translateY.value = 0;
-    nextCardBlur.value = 6;
-    isAnimating.value = false;
-  }, [articles.length, cardHeightSV, isAnimating, isPullingPrev, nextCardBlur, prevTranslateY, resetFlip, translateX, translateY, windowHeightSV]);
+    setCurrentIndex(nextIdx);
+  }, []);
 
-  const commitPrevInstant = useCallback(() => {
-    resetFlip();
-    setContextNoteText('');
-    setSendingContextNote(false);
-    setCurrentIndex((prev) => Math.max(0, prev - 1));
-    prevTranslateY.value = -Math.max(
-      cardHeightSV.value + 120,
-      windowHeightSV.value + 200
-    );
-    translateX.value = 0;
-    translateY.value = 0;
-    isAnimating.value = false;
-  }, [cardHeightSV, isAnimating, prevTranslateY, resetFlip, translateX, translateY, windowHeightSV]);
+  const triggerOlderNews = useCallback(() => {
+    onRequestOlderNews?.();
+  }, [onRequestOlderNews]);
 
-  // Left, Right, and Up move forward; Downward pull brings the previous card down from above
-  const panGesture = Gesture.Pan()
+  const handleStartEdition = useCallback(() => {
+    if (isAnimating.get()) return;
+    isAnimating.set(true);
+    translateY.set(
+      withTiming(
+        -Math.max(cardHeightSV.get() + 120, windowHeightSV.get() + 200),
+        { duration: 220 },
+        (finished) => {
+          if (finished) {
+            const nextIdx = Math.min(activeIdxSV.value + 1, articlesLenSV.value);
+            activeIdxSV.value = nextIdx;
+            translateX.value = 0;
+            translateY.value = 0;
+            flipProgress.value = 0;
+            isFlippedSV.value = false;
+            isAnimating.value = false;
+            runOnJS(syncCurrentIndexFromWorklet)(nextIdx);
+          } else {
+            isAnimating.set(false);
+          }
+        }
+      )
+    );
+  }, [
+    activeIdxSV,
+    articlesLenSV,
+    cardHeightSV,
+    flipProgress,
+    isAnimating,
+    isFlippedSV,
+    syncCurrentIndexFromWorklet,
+    translateX,
+    translateY,
+    windowHeightSV,
+  ]);
+
+  // Unified deck pan gesture: Left, Right, and Up advance forward; Down pulls previous card from above.
+  // `activeIdxSV` and transforms update atomically in the UI worklet callback so cards never blink or snap back.
+  const deckPanGesture = Gesture.Pan()
     .minDistance(10)
     .onStart(() => {
       if (isAnimating.value) return;
@@ -690,9 +2203,11 @@ export function SwipeCardDeck({
     })
     .onUpdate((event) => {
       if (isAnimating.value) return;
+      const activeIdx = activeIdxSV.value;
+      const isCaughtUpCard = activeIdx >= articlesLenSV.value;
 
       const isDownwardPull =
-        currentIndex > 0 &&
+        activeIdx > 0 &&
         event.translationY > 10 &&
         event.translationY > Math.abs(event.translationX);
 
@@ -723,7 +2238,18 @@ export function SwipeCardDeck({
         return;
       }
 
-      const draggingDownAtStart = currentIndex === 0 && event.translationY > 0;
+      if (isCaughtUpCard) {
+        const resist = !hasOlderNewsSV.value ? 0.22 : 1;
+        const draggingDownEmpty =
+          articlesLenSV.value === 0 && event.translationY > 0;
+        translateX.value = event.translationX * resist;
+        translateY.value = draggingDownEmpty
+          ? event.translationY * 0.22
+          : event.translationY * resist;
+        return;
+      }
+
+      const draggingDownAtStart = activeIdx === 0 && event.translationY > 0;
       translateX.value = event.translationX;
       translateY.value = draggingDownAtStart
         ? event.translationY * 0.22
@@ -731,11 +2257,13 @@ export function SwipeCardDeck({
     })
     .onEnd((event) => {
       if (isAnimating.value) return;
+      const activeIdx = activeIdxSV.value;
+      const isCaughtUpCard = activeIdx >= articlesLenSV.value;
 
       if (isPullingPrev.value) {
         isPullingPrev.value = false;
         const pulledDownEnough =
-          currentIndex > 0 &&
+          activeIdx > 0 &&
           (event.translationY > verticalThreshold || event.velocityY > 480);
 
         if (pulledDownEnough) {
@@ -745,7 +2273,19 @@ export function SwipeCardDeck({
             { duration: 190 },
             (finished) => {
               if (finished) {
-                runOnJS(commitPrevInstant)();
+                const prevIdx = Math.max(0, activeIdxSV.value - 1);
+                activeIdxSV.value = prevIdx;
+                prevTranslateY.value = -Math.max(
+                  cardHeightSV.value + 120,
+                  windowHeightSV.value + 200
+                );
+                isPullingPrev.value = false;
+                translateX.value = 0;
+                translateY.value = 0;
+                flipProgress.value = 0;
+                isFlippedSV.value = false;
+                isAnimating.value = false;
+                runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
               } else {
                 isAnimating.value = false;
               }
@@ -766,7 +2306,7 @@ export function SwipeCardDeck({
       const horizontalDominant = absX >= absY;
 
       const swipedDown =
-        currentIndex > 0 &&
+        activeIdx > 0 &&
         !horizontalDominant &&
         (event.translationY > verticalThreshold || event.velocityY > 480);
 
@@ -782,7 +2322,19 @@ export function SwipeCardDeck({
           { duration: 210 },
           (finished) => {
             if (finished) {
-              runOnJS(commitPrevInstant)();
+              const prevIdx = Math.max(0, activeIdxSV.value - 1);
+              activeIdxSV.value = prevIdx;
+              prevTranslateY.value = -Math.max(
+                cardHeightSV.value + 120,
+                windowHeightSV.value + 200
+              );
+              isPullingPrev.value = false;
+              translateX.value = 0;
+              translateY.value = 0;
+              flipProgress.value = 0;
+              isFlippedSV.value = false;
+              isAnimating.value = false;
+              runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
             } else {
               isAnimating.value = false;
             }
@@ -798,26 +2350,45 @@ export function SwipeCardDeck({
       const swipedUp =
         event.translationY < -verticalThreshold || event.velocityY < -480;
 
-      if (
+      const isForwardSwipe =
         (horizontalDominant && (swipedRight || swipedLeft)) ||
         (!horizontalDominant && swipedUp) ||
         swipedRight ||
         swipedLeft ||
-        swipedUp
-      ) {
+        swipedUp;
+
+      if (isCaughtUpCard) {
+        translateX.value = withSpring(0, SPRING_CONFIG);
+        translateY.value = withSpring(0, SPRING_CONFIG);
+        if (isForwardSwipe && hasOlderNewsSV.value) {
+          runOnJS(triggerOlderNews)();
+        }
+        return;
+      }
+
+      if (isForwardSwipe) {
         isAnimating.value = true;
-        nextCardBlur.value = withTiming(0, { duration: 180 });
+        const completeForwardSwipe = (finished?: boolean) => {
+          'worklet';
+          if (finished) {
+            const nextIdx = Math.min(activeIdxSV.value + 1, articlesLenSV.value);
+            activeIdxSV.value = nextIdx;
+            translateX.value = 0;
+            translateY.value = 0;
+            flipProgress.value = 0;
+            isFlippedSV.value = false;
+            isAnimating.value = false;
+            runOnJS(syncCurrentIndexFromWorklet)(nextIdx);
+          } else {
+            isAnimating.value = false;
+          }
+        };
+
         if (swipedUp && (!horizontalDominant || (!swipedRight && !swipedLeft))) {
           translateY.value = withTiming(
             -height * 1.1,
             { duration: 210 },
-            (finished) => {
-              if (finished) {
-                runOnJS(commitNext)();
-              } else {
-                isAnimating.value = false;
-              }
-            }
+            completeForwardSwipe
           );
         } else {
           const exitX =
@@ -827,13 +2398,7 @@ export function SwipeCardDeck({
           translateX.value = withTiming(
             exitX,
             { duration: 200 },
-            (finished) => {
-              if (finished) {
-                runOnJS(commitNext)();
-              } else {
-                isAnimating.value = false;
-              }
-            }
+            completeForwardSwipe
           );
         }
       } else {
@@ -853,123 +2418,6 @@ export function SwipeCardDeck({
         translateY.value = withSpring(0, SPRING_CONFIG);
       }
     });
-
-  // Scope tap-to-flip strictly to the image and body areas so footer actions never flip the card
-  const imageTapGesture = Gesture.Tap()
-    .maxDuration(250)
-    .maxDistance(10)
-    .enabled(!isFlipped && currentArticle?.id !== '__ftue_welcome__')
-    .onEnd(() => {
-      if (isAnimating.value) return;
-      runOnJS(toggleFlip)();
-    });
-
-  const bodyTapGesture = Gesture.Tap()
-    .maxDuration(250)
-    .maxDistance(10)
-    .enabled(!isFlipped && currentArticle?.id !== '__ftue_welcome__')
-    .onEnd(() => {
-      if (isAnimating.value) return;
-      runOnJS(toggleFlip)();
-    });
-
-  const activeCardStyle = useAnimatedStyle(() => {
-    const rotateDeg = interpolate(
-      translateX.value,
-      [-width * 0.6, 0, width * 0.6],
-      [-5.5, 0, 5.5],
-      Extrapolation.CLAMP
-    );
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { rotate: `${rotateDeg}deg` },
-      ],
-    };
-  });
-
-  const frontFaceStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(flipProgress.value, [0, 1], [0, 180]);
-    const opacity = interpolate(flipProgress.value, [0, 0.49, 0.5, 1], [1, 1, 0, 0]);
-    return {
-      opacity,
-      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
-      backfaceVisibility: 'hidden' as const,
-    };
-  });
-
-  const backFaceStyle = useAnimatedStyle(() => {
-    const rotateY = interpolate(flipProgress.value, [0, 1], [180, 360]);
-    const opacity = interpolate(flipProgress.value, [0, 0.49, 0.5, 1], [0, 0, 1, 1]);
-    return {
-      opacity,
-      transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }],
-      backfaceVisibility: 'hidden' as const,
-    };
-  });
-
-  const nextCardStyle = useAnimatedStyle(() => {
-    const forwardDist = Math.max(0, Math.abs(translateX.value), -translateY.value);
-    const progress = interpolate(
-      forwardDist,
-      [0, width * 0.45],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    const offsetY = interpolate(progress, [0, 1], [-6, 0]);
-    const scaleX = interpolate(progress, [0, 1], [0.94, 1]);
-    const opacity = interpolate(progress, [0, 1], [0.96, 1]);
-
-    return {
-      opacity,
-      transform: [{ translateY: offsetY }, { scaleX }],
-    };
-  });
-
-  const nextCardContentStyle = useAnimatedStyle(() => {
-    const contentOpacity = interpolate(nextCardBlur.value, [6, 0], [0.68, 1]);
-    if (Platform.OS === 'web') {
-      return {
-        opacity: contentOpacity,
-        filter: `blur(${nextCardBlur.value.toFixed(2)}px)`,
-      } as Record<string, unknown>;
-    }
-    return {
-      opacity: contentOpacity,
-    };
-  });
-
-  const prevCardStyle = useAnimatedStyle(() => {
-    const offscreenY = -(cardHeightSV.value + 120);
-    const isVisible = prevTranslateY.value > offscreenY + 8;
-    const entryStart = -cardHeightSV.value;
-    const opacity = interpolate(
-      prevTranslateY.value,
-      [offscreenY, entryStart - 16, entryStart + 18],
-      [0, 0, 1],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(
-      prevTranslateY.value,
-      [entryStart, -56, 0],
-      [1.018, 1.018, 1],
-      Extrapolation.CLAMP
-    );
-    const shadowOpacity = interpolate(
-      prevTranslateY.value,
-      [entryStart, -36, 0],
-      [0.24, 0.24, 0.12],
-      Extrapolation.CLAMP
-    );
-    return {
-      opacity: isVisible ? opacity : 0,
-      zIndex: isVisible ? 10 : -1,
-      elevation: isVisible ? 16 : 0,
-      shadowOpacity: isVisible ? shadowOpacity : 0,
-      transform: [{ translateY: prevTranslateY.value }, { scale }],
-    };
-  });
 
   const pullPrevScrimStyle = useAnimatedStyle(() => {
     const offscreenY = -(cardHeightSV.value + 120);
@@ -984,319 +2432,6 @@ export function SwipeCardDeck({
       opacity: isVisible ? progress * 0.14 : 0,
     };
   });
-
-  const caughtUpPanGesture = Gesture.Pan()
-    .minDistance(10)
-    .onStart(() => {
-      if (isAnimating.value) return;
-      isPullingPrev.value = false;
-    })
-    .onUpdate((event) => {
-      if (isAnimating.value) return;
-
-      const isDownwardPull =
-        articles.length > 0 &&
-        event.translationY > 10 &&
-        event.translationY > Math.abs(event.translationX);
-
-      if (isDownwardPull) {
-        if (!isPullingPrev.value) {
-          isPullingPrev.value = true;
-          translateX.value = withSpring(0, SPRING_CONFIG);
-          translateY.value = withSpring(0, SPRING_CONFIG);
-        }
-        const entryStart = -cardHeightSV.value;
-        prevTranslateY.value = Math.min(0, entryStart + event.translationY * 1.15);
-        return;
-      }
-
-      if (isPullingPrev.value && event.translationY <= 0) {
-        isPullingPrev.value = false;
-        prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-          duration: 150,
-        });
-      }
-
-      if (isPullingPrev.value) {
-        const entryStart = -cardHeightSV.value;
-        prevTranslateY.value = Math.min(
-          0,
-          entryStart + Math.max(0, event.translationY) * 1.15
-        );
-        return;
-      }
-
-      const resist = !onRequestOlderNews ? 0.22 : 1;
-      const draggingDownEmpty = articles.length === 0 && event.translationY > 0;
-      translateX.value = event.translationX * resist;
-      translateY.value =
-        draggingDownEmpty ? event.translationY * 0.22 : event.translationY * resist;
-    })
-    .onEnd((event) => {
-      if (isAnimating.value) return;
-
-      if (isPullingPrev.value) {
-        isPullingPrev.value = false;
-        const pulledDownEnough =
-          articles.length > 0 &&
-          (event.translationY > verticalThreshold || event.velocityY > 480);
-
-        if (pulledDownEnough) {
-          isAnimating.value = true;
-          prevTranslateY.value = withTiming(
-            0,
-            { duration: 190 },
-            (finished) => {
-              if (finished) {
-                runOnJS(commitPrevInstant)();
-              } else {
-                isAnimating.value = false;
-              }
-            }
-          );
-        } else {
-          prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-            duration: 180,
-          });
-          translateX.value = withSpring(0, SPRING_CONFIG);
-          translateY.value = withSpring(0, SPRING_CONFIG);
-        }
-        return;
-      }
-
-      const absX = Math.abs(event.translationX);
-      const absY = Math.abs(event.translationY);
-      const horizontalDominant = absX >= absY;
-
-      const swipedDown =
-        articles.length > 0 &&
-        !horizontalDominant &&
-        (event.translationY > verticalThreshold || event.velocityY > 480);
-
-      if (swipedDown) {
-        isAnimating.value = true;
-        if (prevTranslateY.value < -cardHeightSV.value) {
-          prevTranslateY.value = -cardHeightSV.value;
-        }
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-        prevTranslateY.value = withTiming(
-          0,
-          { duration: 210 },
-          (finished) => {
-            if (finished) {
-              runOnJS(commitPrevInstant)();
-            } else {
-              isAnimating.value = false;
-            }
-          }
-        );
-        return;
-      }
-
-      const swipedRight =
-        event.translationX > horizontalThreshold || event.velocityX > 480;
-      const swipedLeft =
-        event.translationX < -horizontalThreshold || event.velocityX < -480;
-      const swipedUp =
-        event.translationY < -verticalThreshold || event.velocityY < -480;
-
-      if (
-        onRequestOlderNews &&
-        ((horizontalDominant && (swipedRight || swipedLeft)) ||
-          (!horizontalDominant && swipedUp) ||
-          swipedRight ||
-          swipedLeft ||
-          swipedUp)
-      ) {
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-        runOnJS(onRequestOlderNews)();
-      } else {
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-      }
-    })
-    .onFinalize((_, success) => {
-      if (!success && !isAnimating.value) {
-        if (isPullingPrev.value) {
-          isPullingPrev.value = false;
-          prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-            duration: 150,
-          });
-        }
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-      }
-    });
-
-  const prevOverlay = prevArticle ? (
-    <>
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          pullPrevScrimStyle,
-          {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 5,
-            borderRadius: 26,
-            backgroundColor: '#1C1917',
-          },
-        ]}
-      />
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          prevCardStyle,
-          {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderRadius: 26,
-            backgroundColor:
-              prevArticle.id === '__ftue_welcome__' ? '#fefaef' : '#FFFFFF',
-            borderWidth: Platform.OS === 'web' ? 0 : 1,
-            borderColor: 'rgba(28, 25, 23, 0.08)',
-            boxShadow:
-              '0 20px 42px -4px rgba(28, 25, 23, 0.28), 0 8px 18px rgba(28, 25, 23, 0.14), 0 0 0 1px rgba(28, 25, 23, 0.08)',
-            shadowColor: '#1C1917',
-            shadowRadius: 26,
-            shadowOffset: { width: 0, height: 14 },
-          },
-        ]}
-      >
-        <View
-          style={{
-            flex: 1,
-            borderRadius: 26,
-            overflow: 'hidden',
-            ...(Platform.OS === 'web'
-              ? ({
-                  isolation: 'isolate',
-                  WebkitMaskImage: '-webkit-radial-gradient(white, black)',
-                } as Record<string, unknown>)
-              : {}),
-          }}
-        >
-          {prevArticle.id === '__ftue_welcome__' ? (
-            <View
-              style={{
-                flex: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 28,
-              }}
-            >
-              <Image
-                source={require('../../../assets/images/snappylit-logo-v2.png')}
-                contentFit="contain"
-                style={{ width: 96, height: 96, marginBottom: 20 }}
-              />
-              <Text className="text-[22px] font-bold text-ink text-center tracking-[-0.35px] mb-2 consumer-display">
-                Welcome curious reader!
-              </Text>
-              <Text className="text-[15px] leading-[22px] text-stone-600 text-center">
-                Swipe to start reading
-              </Text>
-            </View>
-          ) : (
-            <>
-              <View
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  height:
-                    baseImageTier === 0 ? 175 : baseImageTier === 1 ? 88 : 44,
-                  overflow: 'hidden',
-                }}
-              >
-                {showImages && prevArticle.image_url && !prevImageLoadFailed ? (
-                  <Image
-                    source={{ uri: prevArticle.image_url }}
-                    contentFit="cover"
-                    onError={() => setPrevImageLoadFailed(true)}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundColor: '#F1EFEA',
-                    }}
-                  />
-                ) : (
-                  <TopicPatternBanner topic={prevArticle.topic} />
-                )}
-                {prevArticle.topic ? (() => {
-                  const prevVisual = getTopicVisual(prevArticle.topic);
-                  return (
-                    <GlassTagPill
-                      borderColor={prevVisual?.pillBorder}
-                      useNativeGlass={false}
-                      style={{
-                        position: 'absolute',
-                        top: 12,
-                        left: 12,
-                        paddingHorizontal: 11,
-                        paddingVertical: 4,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {prevVisual ? (
-                        <TopicIcon
-                          name={prevVisual.icon}
-                          color={prevVisual.color}
-                          size={12}
-                        />
-                      ) : null}
-                      <Text className="text-[11.5px] font-medium text-white">
-                        {prevArticle.topic}
-                      </Text>
-                    </GlassTagPill>
-                  );
-                })() : null}
-              </View>
-
-              <View style={{ flex: 1, padding: 20, overflow: 'hidden' }}>
-                <View className="flex-row items-center gap-2 mb-2 min-w-0">
-                  <Text
-                    className="text-[11.5px] font-medium text-stone-400 flex-shrink"
-                    numberOfLines={1}
-                  >
-                    {[
-                      formatEditionDate(prevArticle.date, 'short'),
-                      getSourceLabel(prevArticle),
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </Text>
-                </View>
-                <Text
-                  className="font-bold text-ink tracking-[-0.35px] mb-2.5 consumer-display"
-                  style={{
-                    fontSize: Math.round(20.5 * fontScale * 10) / 10,
-                    lineHeight: Math.round(26 * fontScale * 10) / 10,
-                  }}
-                  numberOfLines={3}
-                >
-                  {prevArticle.ai_headline}
-                </Text>
-                <ArticleSummaryPoints
-                  article={prevArticle}
-                  fontScale={fontScale}
-                />
-              </View>
-            </>
-          )}
-        </View>
-      </Animated.View>
-    </>
-  ) : null;
 
   const handleCardContainerLayout = useCallback(
     (layoutHeight: number) => {
@@ -1315,29 +2450,42 @@ export function SwipeCardDeck({
     [cardHeightSV, height, isAnimating, isPullingPrev, prevTranslateY]
   );
 
-  if (!currentArticle) {
-    const displaySavedCount = savedCount ?? savedArticlesList.length;
-    const streakLine =
-      !activeTopic && streakDays && streakDays > 0
-        ? formatStreakLine(streakDays)
-        : null;
-    const subtitleText = activeTopic
-      ? activeTopic === 'Saved for later'
-        ? 'You’ve finished your saved stories.'
-        : `You’ve read all stories in ${activeTopic}.`
-      : (nextEditionText ?? 'You’ve caught up on older stories.');
+  const displaySavedCount = savedCount ?? savedArticlesList.length;
+  const streakLine =
+    !activeTopic && streakDays && streakDays > 0
+      ? formatStreakLine(streakDays)
+      : null;
+  const subtitleText = activeTopic
+    ? activeTopic === 'Saved for later'
+      ? 'You’ve finished your saved stories.'
+      : `You’ve read all stories in ${activeTopic}.`
+    : (nextEditionText ?? 'You’ve caught up on older stories.');
 
-    return (
-      <View
-        style={{
-          flex: 1,
-          paddingLeft: 20,
-          paddingRight: 20,
-          paddingTop: 22,
-          paddingBottom: 20,
-          alignItems: 'center',
-        }}
-      >
+  const startVisibleIdx = Math.max(0, currentIndex - 1);
+  const endVisibleIdx = Math.min(articles.length - 1, currentIndex + 2);
+  const visibleArticleEntries: { article: Article; index: number }[] = [];
+  for (let i = startVisibleIdx; i <= endVisibleIdx; i += 1) {
+    const item = articles[i];
+    if (item) {
+      visibleArticleEntries.push({ article: item, index: i });
+    }
+  }
+  const showCaughtUpSlot = currentIndex >= Math.max(0, articles.length - 2);
+  const isCaughtUpActive = currentIndex >= articles.length;
+
+  return (
+    <View
+      style={{
+        flex: 1,
+        paddingLeft: 20,
+        paddingRight: 20,
+        paddingTop: 22,
+        paddingBottom: 20,
+        alignItems: 'center',
+      }}
+    >
+      {/* Unified Keyed Floating Card Stack */}
+      <GestureDetector gesture={deckPanGesture}>
         <View
           onLayout={(e) => handleCardContainerLayout(e.nativeEvent.layout.height)}
           style={{
@@ -1347,11 +2495,106 @@ export function SwipeCardDeck({
             position: 'relative',
           }}
         >
-          <GestureDetector gesture={caughtUpPanGesture}>
-            <Animated.View
-              style={[
-                activeCardStyle,
-                {
+          {/* Scrim cast over active card when pulling the previous card down */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              pullPrevScrimStyle,
+              {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 5,
+                borderRadius: 26,
+                backgroundColor: '#1C1917',
+              },
+            ]}
+          />
+
+          {/* Keyed story cards (prev, active, next, third) stay mounted across transitions */}
+          {visibleArticleEntries.map(({ article, index }) => {
+            const isActiveCard = index === currentIndex;
+            const isShowFlipTip =
+              isActiveCard &&
+              showOnboardingTips &&
+              index === 1 &&
+              !isFlipped &&
+              !flipTipDismissed;
+            const isShowTopicTip =
+              isActiveCard &&
+              showOnboardingTips &&
+              index === 2 &&
+              !activeTopic &&
+              Boolean(article.topic) &&
+              !isFlipped &&
+              !topicTipDismissed;
+
+            return (
+              <DeckSlotCard
+                key={article.id}
+                cardIndex={index}
+                activeIdxSV={activeIdxSV}
+                translateX={translateX}
+                translateY={translateY}
+                prevTranslateY={prevTranslateY}
+                cardHeightSV={cardHeightSV}
+                width={width}
+                isInteractive={isActiveCard}
+              >
+                <ArticleDeckCard
+                  article={article}
+                  cardIndex={index}
+                  totalArticles={articles.length}
+                  isActive={isActiveCard}
+                  isFlipped={isActiveCard ? isFlipped : false}
+                  activeIdxSV={activeIdxSV}
+                  flipProgress={flipProgress}
+                  isFlippedSV={isFlippedSV}
+                  editionMeta={editionMeta}
+                  showImages={showImages}
+                  baseImageTier={baseImageTier}
+                  fontScale={fontScale}
+                  activeTopic={activeTopic}
+                  onSelectTopic={onSelectTopic}
+                  onClearTopic={onClearTopic}
+                  onStartEdition={handleStartEdition}
+                  toggleFlip={toggleFlip}
+                  currentVote={effectiveArticleVotes[article.id]}
+                  isSaved={Boolean(effectiveSavedIds[article.id])}
+                  onVote={handleArticleVote}
+                  onToggleSave={handleToggleSave}
+                  contextFeedback={contextFeedbackByArticle[article.id]}
+                  contextNoteText={contextNoteText}
+                  onChangeContextNoteText={setContextNoteText}
+                  contextNoteInputRef={contextNoteInputRef}
+                  sendingContextNote={sendingContextNote}
+                  onCancelContextNote={handleCancelContextNote}
+                  onSendContextNote={handleSendContextNote}
+                  onContextFeedback={handleContextFeedback}
+                  showFlipTip={isShowFlipTip}
+                  showTopicTip={isShowTopicTip}
+                />
+              </DeckSlotCard>
+            );
+          })}
+
+          {/* End-of-edition Caught Up card inside the same keyed deck */}
+          {showCaughtUpSlot ? (
+            <DeckSlotCard
+              key="__caught_up__"
+              cardIndex={articles.length}
+              activeIdxSV={activeIdxSV}
+              translateX={translateX}
+              translateY={translateY}
+              prevTranslateY={prevTranslateY}
+              cardHeightSV={cardHeightSV}
+              width={width}
+              isInteractive={isCaughtUpActive}
+            >
+              <View
+                style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
@@ -1369,1153 +2612,265 @@ export function SwipeCardDeck({
                   shadowOffset: { width: 0, height: 10 },
                   padding: 28,
                   justifyContent: 'space-between',
-                  ...(Platform.OS === 'web'
-                    ? ({
-                        touchAction: 'none',
-                        userSelect: 'none',
-                      } as Record<string, unknown>)
-                    : {}),
-                },
-              ]}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  width: '100%',
                 }}
               >
                 <View
                   style={{
                     flex: 1,
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingTop: 8,
-                    paddingBottom: 16,
+                    width: '100%',
                   }}
                 >
-                  <Animated.View
-                    entering={ZoomIn.springify().damping(14).stiffness(180)}
+                  <View
                     style={{
-                      width: 92,
-                      height: 92,
+                      flex: 1,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginBottom: 14,
-                      position: 'relative',
+                      paddingTop: 8,
+                      paddingBottom: 16,
                     }}
                   >
-                    {/* Subtle geometric celebration confetti */}
                     <View
                       style={{
-                        position: 'absolute',
-                        top: 6,
-                        left: 14,
-                        width: 7,
-                        height: 7,
-                        borderRadius: 999,
-                        backgroundColor: '#2DD4BF',
-                        opacity: 0.85,
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 10,
-                        width: 6,
-                        height: 6,
-                        borderRadius: 2,
-                        backgroundColor: '#F59E0B',
-                        transform: [{ rotate: '25deg' }],
-                        opacity: 0.85,
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: 12,
-                        left: 8,
-                        width: 6,
-                        height: 6,
-                        borderRadius: 2,
-                        backgroundColor: '#F59E0B',
-                        transform: [{ rotate: '-20deg' }],
-                        opacity: 0.75,
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        bottom: 8,
-                        right: 14,
-                        width: 7,
-                        height: 7,
-                        borderRadius: 999,
-                        backgroundColor: '#0D9488',
-                        opacity: 0.7,
-                      }}
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 38,
-                        right: 2,
-                        width: 5,
-                        height: 5,
-                        borderRadius: 999,
-                        backgroundColor: '#34D399',
-                        opacity: 0.8,
-                      }}
-                    />
-                    <View
-                      style={{
-                        width: 64,
-                        height: 64,
-                        borderRadius: 999,
-                        backgroundColor: '#F0FDFA',
-                        borderWidth: 1.5,
-                        borderColor: 'rgba(13, 148, 136, 0.18)',
+                        width: 92,
+                        height: 92,
                         alignItems: 'center',
                         justifyContent: 'center',
+                        marginBottom: 14,
+                        position: 'relative',
                       }}
                     >
                       <View
-                        style={{
-                          width: 46,
-                          height: 46,
-                          borderRadius: 999,
-                          backgroundColor: '#CCFBF1',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 21,
-                            fontWeight: '700',
-                            color: '#0F766E',
-                          }}
-                        >
-                          ✓
-                        </Text>
-                      </View>
-                    </View>
-                  </Animated.View>
-
-                  <Text className="text-[24px] font-bold text-ink text-center tracking-[-0.4px] mb-2 consumer-display">
-                    You&apos;re all caught up
-                  </Text>
-                  {streakLine ? (
-                    <Text
-                      className="text-[15px] leading-[22px] font-semibold text-center max-w-[270px]"
-                      style={{ color: '#0F766E' }}
-                    >
-                      {streakLine}
-                    </Text>
-                  ) : null}
-                  {subtitleText ? (
-                    <Text
-                      className="text-[14.5px] leading-[21px] text-stone-500 text-center max-w-[270px]"
-                      style={streakLine ? { marginTop: 4 } : undefined}
-                    >
-                      {subtitleText}
-                    </Text>
-                  ) : null}
-                </View>
-
-                {(displaySavedCount > 0 && onOpenSavedForLater) ||
-                onRequestOlderNews ? (
-                  <View
-                    style={{
-                      alignItems: 'center',
-                      gap: 12,
-                      paddingBottom: 20,
-                    }}
-                  >
-                    {displaySavedCount > 0 && onOpenSavedForLater ? (
-                      <Pressable
-                        onPress={onOpenSavedForLater}
-                        accessibilityLabel={`Open saved for later (${displaySavedCount})`}
-                        style={({ pressed }) => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 8,
-                          paddingHorizontal: 18,
-                          paddingVertical: 10,
-                          borderRadius: 999,
-                          backgroundColor: '#F0FDFA',
-                          borderWidth: 1,
-                          borderColor: 'rgba(13, 148, 136, 0.22)',
-                          opacity: pressed ? 0.78 : 1,
-                          transform: [{ scale: pressed ? 0.97 : 1 }],
-                          ...(Platform.OS === 'web'
-                            ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                            : {}),
-                        })}
-                      >
-                        <BookmarkIcon filled color="#0D9488" size={14} />
-                        <Text className="text-[14px] font-semibold text-accent">
-                          Open saved for later ({displaySavedCount})
-                        </Text>
-                      </Pressable>
-                    ) : null}
-
-                    {onRequestOlderNews ? (
-                      <Text className="text-[13px] font-medium text-stone-400 text-center">
-                        Swipe to read older news
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-
-              <View className="pt-5 border-t border-stone-100 items-center w-full">
-                {feedbackStep === 'idle' ? (
-                  <>
-                    <Text className="text-[15px] font-medium text-ink text-center mb-4">
-                      Did you enjoy reading today?
-                    </Text>
-                    <View className="flex-row items-center justify-center gap-5">
-                      {FEEDBACK_EMOJIS.map((item) => (
-                        <Pressable
-                          key={item.emoji}
-                          onPress={() => void handleSelectEmoji(item.emoji)}
-                          accessibilityLabel={item.label}
-                          className="w-12 h-12 rounded-full bg-[#F5F4F0] items-center justify-center active:scale-95 active:opacity-75"
-                        >
-                          <Text className="text-[24px]">{item.emoji}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </>
-                ) : feedbackStep === 'note' ? (
-                  <View className="w-full">
-                    <Text className="text-[14.5px] font-medium text-ink text-center mb-3">
-                      Thanks! Add another line?
-                    </Text>
-                    <TextInput
-                      ref={noteInputRef}
-                      value={noteText}
-                      onChangeText={setNoteText}
-                      placeholder="Write a quick note..."
-                      placeholderTextColor="#A8A29E"
-                      autoFocus
-                      multiline
-                      className="w-full bg-[#F5F4F0] border border-stone-200 rounded-2xl px-3.5 py-2.5 text-[14.5px] text-ink min-h-[72px] mb-3"
-                    />
-                    <View className="flex-row items-center justify-end gap-2.5">
-                      <Pressable
-                        onPress={handleCancelNote}
-                        disabled={sendingNote}
-                        className="px-4 py-2 rounded-full active:opacity-60"
-                      >
-                        <Text className="text-[13.5px] font-medium text-stone-500">
-                          Cancel
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => void handleSendNote()}
-                        disabled={sendingNote}
-                        className="px-5 py-2 rounded-full bg-ink active:opacity-80"
-                      >
-                        <Text className="text-[13.5px] font-semibold text-white">
-                          {sendingNote ? 'Sending...' : 'Send'}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <Text className="text-[14.5px] font-medium text-accent text-center py-2">
-                    Thanks for your feedback!
-                  </Text>
-                )}
-              </View>
-            </Animated.View>
-          </GestureDetector>
-          {prevOverlay}
-        </View>
-      </View>
-    );
-  }
-
-  const sourceLabel = getSourceLabel(currentArticle);
-  const shortDate = formatEditionDate(currentArticle.date, 'short');
-
-  return (
-    <View
-      style={{
-        flex: 1,
-        paddingLeft: 20,
-        paddingRight: 20,
-        paddingTop: 22,
-        paddingBottom: 20,
-        alignItems: 'center',
-      }}
-    >
-      {/* Full-Height Floating Card Stack */}
-      <View
-        onLayout={(e) => handleCardContainerLayout(e.nativeEvent.layout.height)}
-        style={{
-          flex: 1,
-          width: '100%',
-          maxWidth: 420,
-          position: 'relative',
-        }}
-      >
-        {/* Third card peeking 12px from top */}
-        {thirdArticle || onRequestOlderNews ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 1,
-              borderRadius: 26,
-              backgroundColor: '#EAE8E2',
-              borderWidth: Platform.OS === 'web' ? 0 : 1,
-              borderColor: 'rgba(28, 25, 23, 0.08)',
-              transform: [{ translateY: -12 }, { scaleX: 0.88 }],
-              boxShadow:
-                '0 2px 8px rgba(28, 25, 23, 0.05), 0 0 0 1px rgba(28, 25, 23, 0.08)',
-              shadowColor: '#1C1917',
-              shadowOpacity: 0.04,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 2 },
-            }}
-          />
-        ) : null}
-
-        {/* Second card animated preview peeking 6px from top */}
-        {nextArticle || onRequestOlderNews ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 2,
-                borderRadius: 26,
-                overflow: 'hidden',
-                backgroundColor: '#F4F3EF',
-                borderWidth: Platform.OS === 'web' ? 0 : 1,
-                borderColor: 'rgba(28, 25, 23, 0.08)',
-                boxShadow:
-                  '0 4px 12px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
-                shadowColor: '#1C1917',
-                shadowOpacity: 0.06,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 4 },
-                ...(Platform.OS === 'web'
-                  ? ({
-                    isolation: 'isolate',
-                    WebkitMaskImage: '-webkit-radial-gradient(white, black)',
-                  } as Record<string, unknown>)
-                  : {}),
-              },
-              nextCardStyle,
-            ]}
-          >
-            <Animated.View style={[{ flex: 1 }, nextCardContentStyle]}>
-              {nextArticle ? (
-                <View
-                  style={{
-                    position: 'relative',
-                    width: '100%',
-                    height: 175,
-                    borderTopLeftRadius: 26,
-                    borderTopRightRadius: 26,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {showImages && nextArticle.image_url && !nextImageLoadFailed ? (
-                    <Image
-                      source={{ uri: nextArticle.image_url }}
-                      contentFit="cover"
-                      blurRadius={Platform.OS === 'web' ? 0 : 6}
-                      onError={() => setNextImageLoadFailed(true)}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: '#F1EFEA',
-                        borderTopLeftRadius: 26,
-                        borderTopRightRadius: 26,
-                      }}
-                    />
-                  ) : (
-                    <TopicPatternBanner topic={nextArticle.topic} />
-                  )}
-                  {nextArticle.topic ? (() => {
-                    const nextVisual = getTopicVisual(nextArticle.topic);
-                    return (
-                      <GlassTagPill
-                        borderColor={nextVisual?.pillBorder}
                         style={{
                           position: 'absolute',
-                          top: 12,
-                          left: 12,
-                          paddingHorizontal: 11,
-                          paddingVertical: 4,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                      >
-                        {nextVisual ? (
-                          <TopicIcon
-                            name={nextVisual.icon}
-                            color={nextVisual.color}
-                            size={12}
-                          />
-                        ) : null}
-                        <Text className="text-[11.5px] font-medium text-white">
-                          {nextArticle.topic}
-                        </Text>
-                      </GlassTagPill>
-                    );
-                  })() : null}
-                </View>
-              ) : null}
-              {nextArticle ? (
-                <View
-                  style={{
-                    flex: 1,
-                    padding: 20,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View style={{ flexShrink: 1 }}>
-                    <View className="flex-row items-center gap-2 mb-2 min-w-0">
-                      <Text
-                        className="text-[11.5px] font-medium text-stone-400 flex-shrink"
-                        numberOfLines={1}
-                      >
-                        {[
-                          formatEditionDate(nextArticle.date, 'short'),
-                          getSourceLabel(nextArticle),
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                      </Text>
-                    </View>
-
-                    <Text
-                      className="font-bold text-ink tracking-[-0.35px] mb-2.5 consumer-display"
-                      style={{
-                        fontSize: Math.round(20.5 * fontScale * 10) / 10,
-                        lineHeight: Math.round(26 * fontScale * 10) / 10,
-                      }}
-                      numberOfLines={3}
-                    >
-                      {nextArticle.ai_headline}
-                    </Text>
-
-                    <ArticleSummaryPoints
-                      article={nextArticle}
-                      fontScale={fontScale}
-                    />
-                  </View>
-                </View>
-              ) : null}
-            </Animated.View>
-          </Animated.View>
-        ) : null}
-
-        {/* Active Swipeable & Flippable Card */}
-        <GestureDetector gesture={panGesture}>
-          <Animated.View
-            style={[
-              activeCardStyle,
-              {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 3,
-                ...(Platform.OS === 'web'
-                  ? ({
-                      touchAction: 'none',
-                      userSelect: 'none',
-                    } as Record<string, unknown>)
-                  : {}),
-              },
-            ]}
-          >
-            {/* FRONT FACE */}
-            <Animated.View
-              pointerEvents={isFlipped ? 'none' : 'auto'}
-              style={[
-                frontFaceStyle,
-                {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  borderRadius: 26,
-                  overflow: 'hidden',
-                  backgroundColor:
-                    currentArticle.id === '__ftue_welcome__'
-                      ? '#fefaef'
-                      : '#FFFFFF',
-                  borderWidth: Platform.OS === 'web' ? 0 : 1,
-                  borderColor: 'rgba(28, 25, 23, 0.08)',
-                  boxShadow:
-                    '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
-                  shadowColor: '#1C1917',
-                  shadowOpacity: 0.1,
-                  shadowRadius: 24,
-                  shadowOffset: { width: 0, height: 10 },
-                },
-              ]}
-            >
-              {currentArticle.id === '__ftue_welcome__' ? (
-                <View
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingHorizontal: 28,
-                  }}
-                >
-                  <Image
-                    source={require('../../../assets/images/snappylit-logo-v2.png')}
-                    contentFit="contain"
-                    style={{ width: 96, height: 96, marginBottom: 20 }}
-                  />
-                  <Text className="text-[22px] font-bold text-ink text-center tracking-[-0.35px] mb-2 consumer-display">
-                    Welcome curious reader!
-                  </Text>
-                  <Text className="text-[15px] leading-[22px] text-stone-600 text-center">
-                    Swipe to start reading
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <View
-                    style={{
-                      position: 'relative',
-                      width: '100%',
-                      height: imageTier === 0 ? 175 : imageTier === 1 ? 88 : 44,
-                    }}
-                  >
-                    <GestureDetector gesture={imageTapGesture}>
-                      <View style={{ width: '100%', height: '100%' }}>
-                        {showImages &&
-                          currentArticle.image_url &&
-                          !imageLoadFailed ? (
-                          <Image
-                            source={{ uri: currentArticle.image_url }}
-                            contentFit="cover"
-                            transition={180}
-                            onError={() => setImageLoadFailed(true)}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              backgroundColor: '#F1EFEA',
-                            }}
-                          />
-                        ) : (
-                          <TopicPatternBanner topic={currentArticle.topic} />
-                        )}
-                      </View>
-                    </GestureDetector>
-                    {activeTopic ? (() => {
-                      const activeVisual = getTopicVisual(activeTopic);
-                      return (
-                        <GlassTagPill
-                          borderColor={activeVisual?.pillBorder}
-                          interactive
-                          style={{
-                            position: 'absolute',
-                            top: 12,
-                            left: 12,
-                            right: 12,
-                            zIndex: 10,
-                            paddingLeft: 14,
-                            paddingRight: 8,
-                            paddingVertical: 5,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                          }}
-                        >
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 6,
-                              flexShrink: 1,
-                            }}
-                          >
-                            {activeVisual ? (
-                              <TopicIcon
-                                name={activeVisual.icon}
-                                color={activeVisual.color}
-                                size={12}
-                              />
-                            ) : null}
-                            <Text
-                              className="text-[12px] font-medium text-white flex-shrink"
-                              numberOfLines={1}
-                            >
-                              {activeTopic} ({Math.min(currentIndex + 1, articles.length)}/
-                              {articles.length})
-                            </Text>
-                          </View>
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              onClearTopic?.();
-                            }}
-                            accessibilityLabel="Clear topic filter"
-                            hitSlop={8}
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 999,
-                              backgroundColor: 'rgba(255, 255, 255, 0.22)',
-                              borderWidth: 1,
-                              borderColor: 'rgba(255, 255, 255, 0.2)',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Text className="text-[11px] font-bold text-white leading-none">
-                              ✕
-                            </Text>
-                          </Pressable>
-                        </GlassTagPill>
-                      );
-                    })() : (() => {
-                      const cardTags = getArticleTags(currentArticle);
-                      if (cardTags.length === 0) return null;
-                      return (
-                        <View
-                          style={{
-                            position: 'absolute',
-                            top: 12,
-                            left: 12,
-                            right: 12,
-                            zIndex: 10,
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            alignItems: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          {cardTags.map((tag, tagIdx) => {
-                            const tagVisual = tagIdx === 0 ? getTopicVisual(tag) : null;
-                            return (
-                              <Pressable
-                                key={tag}
-                                onPress={(e) => {
-                                  e.stopPropagation?.();
-                                  onSelectTopic?.(tag);
-                                }}
-                                accessibilityLabel={`Filter by ${tag}`}
-                                hitSlop={4}
-                                style={({ pressed }) => ({
-                                  opacity: pressed ? 0.78 : 1,
-                                  transform: [{ scale: pressed ? 0.96 : 1 }],
-                                  ...(Platform.OS === 'web'
-                                    ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                                    : {}),
-                                })}
-                              >
-                                <GlassTagPill
-                                  primary={tagIdx === 0}
-                                  borderColor={tagVisual?.pillBorder}
-                                  interactive
-                                  style={{
-                                    paddingLeft: tagIdx === 0 ? 11 : 9,
-                                    paddingRight: tagIdx === 0 ? 9 : 8,
-                                    paddingVertical: 4,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                  }}
-                                >
-                                  {tagVisual ? (
-                                    <TopicIcon
-                                      name={tagVisual.icon}
-                                      color={tagVisual.color}
-                                      size={12}
-                                    />
-                                  ) : null}
-                                  <Text className="text-[11.5px] font-medium text-white">
-                                    {tag}
-                                  </Text>
-                                  <Text
-                                    style={{
-                                      fontSize: 12,
-                                      lineHeight: 13,
-                                      fontWeight: '600',
-                                      color: 'rgba(255, 255, 255, 0.68)',
-                                      marginLeft: -1,
-                                    }}
-                                  >
-                                    ›
-                                  </Text>
-                                </GlassTagPill>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      );
-                    })()}
-                  </View>
-
-                  <GestureDetector gesture={bodyTapGesture}>
-                    <View
-                      onLayout={(e) => {
-                        textAreaHeightRef.current = e.nativeEvent.layout.height - 40;
-                        checkTextOverflow();
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: 20,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <View
-                        onLayout={(e) => {
-                          textContentHeightRef.current = e.nativeEvent.layout.height;
-                          checkTextOverflow();
-                        }}
-                      >
-                        {/* Eyebrow: Date, Source */}
-                        {shortDate || sourceLabel ? (
-                          <View className="flex-row items-center gap-2 mb-2 min-w-0">
-                            <Text
-                              className="text-[11.5px] font-medium text-stone-400 flex-shrink"
-                              numberOfLines={1}
-                            >
-                              {[shortDate, sourceLabel].filter(Boolean).join(', ')}
-                            </Text>
-                          </View>
-                        ) : null}
-
-                        {/* Headline */}
-                        <Text
-                          className="font-bold text-ink tracking-[-0.35px] mb-2.5 consumer-display"
-                          style={{
-                            fontSize: Math.round(20.5 * fontScale * 10) / 10,
-                            lineHeight: Math.round(26 * fontScale * 10) / 10,
-                          }}
-                          numberOfLines={3}
-                        >
-                          {currentArticle.ai_headline}
-                        </Text>
-
-                        {/* Summary: Visual chunking (punchy points + anchor word highlights + focus-assisted fade-in) */}
-                        <Animated.View style={summaryFocusStyle}>
-                          <ArticleSummaryPoints
-                            article={currentArticle}
-                            fontScale={fontScale}
-                          />
-                        </Animated.View>
-                      </View>
-                    </View>
-                  </GestureDetector>
-
-                  {/* Card Front Footer: Dislike (left) + Save for later / Like (right) */}
-                  <View
-                    style={{
-                      paddingHorizontal: 20,
-                      paddingBottom: 14,
-                      paddingTop: 8,
-                      borderTopWidth: 1,
-                      borderTopColor: 'rgba(28, 25, 23, 0.06)',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    {(() => {
-                      const currentVote = effectiveArticleVotes[currentArticle.id];
-                      const isLiked = currentVote === 'like';
-                      const isDisliked = currentVote === 'dislike';
-                      const isSaved = Boolean(
-                        effectiveSavedIds[currentArticle.id]
-                      );
-                      return (
-                        <>
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              void handleArticleVote(currentArticle, 'dislike');
-                            }}
-                            accessibilityLabel="Dislike this story"
-                            accessibilityState={{ selected: isDisliked }}
-                            hitSlop={10}
-                            style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 999,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: isDisliked ? '#FEF2F2' : '#F5F5F4',
-                              borderWidth: 1,
-                              borderColor: isDisliked
-                                ? 'rgba(220, 38, 38, 0.4)'
-                                : 'rgba(28, 25, 23, 0.08)',
-                              ...(Platform.OS === 'web'
-                                ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                                : {}),
-                            }}
-                          >
-                            <ThumbIcon
-                              direction="down"
-                              filled={isDisliked}
-                              color={isDisliked ? '#DC2626' : '#78716C'}
-                              size={15}
-                            />
-                          </Pressable>
-                          <View className="flex-row items-center gap-2">
-                            <Pressable
-                              onPress={(e) => {
-                                e.stopPropagation?.();
-                                handleToggleSave(currentArticle);
-                              }}
-                              accessibilityLabel={
-                                isSaved
-                                  ? 'Remove from saved for later'
-                                  : 'Save story for later'
-                              }
-                              accessibilityState={{ selected: isSaved }}
-                              hitSlop={10}
-                              style={{
-                                height: 34,
-                                paddingHorizontal: isSaved ? 11 : 9,
-                                borderRadius: 999,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 4,
-                                backgroundColor: isSaved ? '#F0FDFA' : '#F5F5F4',
-                                borderWidth: 1,
-                                borderColor: isSaved
-                                  ? 'rgba(13, 148, 136, 0.45)'
-                                  : 'rgba(28, 25, 23, 0.08)',
-                                ...(Platform.OS === 'web'
-                                  ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                                  : {}),
-                              }}
-                            >
-                              <BookmarkIcon
-                                filled={isSaved}
-                                color={isSaved ? '#0D9488' : '#78716C'}
-                                size={14}
-                              />
-                              {isSaved ? (
-                                <Text className="text-[11px] font-semibold text-accent">
-                                  Saved
-                                </Text>
-                              ) : null}
-                            </Pressable>
-                            <Pressable
-                              onPress={(e) => {
-                                e.stopPropagation?.();
-                                void handleArticleVote(currentArticle, 'like');
-                              }}
-                              accessibilityLabel="Like this story"
-                              accessibilityState={{ selected: isLiked }}
-                              hitSlop={10}
-                              style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 999,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                backgroundColor: isLiked ? '#ECFDF5' : '#F5F5F4',
-                                borderWidth: 1,
-                                borderColor: isLiked
-                                  ? 'rgba(13, 148, 136, 0.45)'
-                                  : 'rgba(28, 25, 23, 0.08)',
-                                ...(Platform.OS === 'web'
-                                  ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                                  : {}),
-                              }}
-                            >
-                              <ThumbIcon
-                                direction="up"
-                                filled={isLiked}
-                                color={isLiked ? '#0D9488' : '#78716C'}
-                                size={15}
-                              />
-                            </Pressable>
-                          </View>
-                        </>
-                      );
-                    })()}
-                  </View>
-
-                  {showOnboardingTips &&
-                    currentIndex === 1 &&
-                    !isFlipped &&
-                    !flipTipDismissed ? (
-                    <View
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        bottom: 66,
-                        left: 20,
-                        right: 20,
-                        alignItems: 'center',
-                        zIndex: 15,
-                      }}
-                    >
-                      <View
-                        style={{
-                          backgroundColor: '#fefaef',
+                          top: 6,
+                          left: 14,
+                          width: 7,
+                          height: 7,
                           borderRadius: 999,
-                          paddingHorizontal: 14,
-                          paddingVertical: 7,
-                          borderWidth: 1,
-                          borderColor: 'rgba(28, 25, 23, 0.14)',
-                          boxShadow: '0 6px 16px rgba(28, 25, 23, 0.14)',
-                        }}
-                      >
-                        <Text className="text-[13px] font-medium text-ink">
-                          👆 Tap to flip cards
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {showOnboardingTips &&
-                    currentIndex === 2 &&
-                    !activeTopic &&
-                    currentArticle.topic &&
-                    !isFlipped &&
-                    !topicTipDismissed ? (
-                    <View
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        top: !showImages || currentArticle.image_url ? 42 : 44,
-                        left: 14,
-                        zIndex: 15,
-                        alignItems: 'flex-start',
-                      }}
-                    >
-                      <View
-                        style={{
-                          marginLeft: 14,
-                          width: 0,
-                          height: 0,
-                          borderLeftWidth: 7,
-                          borderRightWidth: 7,
-                          borderBottomWidth: 8,
-                          borderLeftColor: 'transparent',
-                          borderRightColor: 'transparent',
-                          borderBottomColor: '#fefaef',
+                          backgroundColor: '#2DD4BF',
+                          opacity: 0.85,
                         }}
                       />
                       <View
                         style={{
-                          backgroundColor: '#fefaef',
-                          borderRadius: 14,
-                          paddingHorizontal: 12,
-                          paddingVertical: 7,
-                          borderWidth: 1,
-                          borderColor: 'rgba(28, 25, 23, 0.14)',
-                          boxShadow: '0 6px 16px rgba(28, 25, 23, 0.16)',
+                          position: 'absolute',
+                          top: 10,
+                          right: 10,
+                          width: 6,
+                          height: 6,
+                          borderRadius: 2,
+                          backgroundColor: '#F59E0B',
+                          transform: [{ rotate: '25deg' }],
+                          opacity: 0.85,
+                        }}
+                      />
+                      <View
+                        style={{
+                          position: 'absolute',
+                          bottom: 12,
+                          left: 8,
+                          width: 6,
+                          height: 6,
+                          borderRadius: 2,
+                          backgroundColor: '#F59E0B',
+                          transform: [{ rotate: '-20deg' }],
+                          opacity: 0.75,
+                        }}
+                      />
+                      <View
+                        style={{
+                          position: 'absolute',
+                          bottom: 8,
+                          right: 14,
+                          width: 7,
+                          height: 7,
+                          borderRadius: 999,
+                          backgroundColor: '#0D9488',
+                          opacity: 0.7,
+                        }}
+                      />
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: 38,
+                          right: 2,
+                          width: 5,
+                          height: 5,
+                          borderRadius: 999,
+                          backgroundColor: '#34D399',
+                          opacity: 0.8,
+                        }}
+                      />
+                      <View
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: 999,
+                          backgroundColor: '#F0FDFA',
+                          borderWidth: 1.5,
+                          borderColor: 'rgba(13, 148, 136, 0.18)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
-                        <Text className="text-[12.5px] font-medium text-ink">
-                          Tap here to focus on a subject
-                        </Text>
+                        <View
+                          style={{
+                            width: 46,
+                            height: 46,
+                            borderRadius: 999,
+                            backgroundColor: '#CCFBF1',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 21,
+                              fontWeight: '700',
+                              color: '#0F766E',
+                            }}
+                          >
+                            ✓
+                          </Text>
+                        </View>
                       </View>
                     </View>
-                  ) : null}
-                </>
-              )}
-            </Animated.View>
 
-            {/* BACK FACE (Why it matters + Was it helpful? + Read Source) */}
-            <Animated.View
-              pointerEvents={isFlipped ? 'auto' : 'none'}
-              style={[
-                backFaceStyle,
-                {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  borderRadius: 26,
-                  overflow: 'hidden',
-                  backgroundColor: '#FAF9F6',
-                  borderWidth: Platform.OS === 'web' ? 0 : 1,
-                  borderColor: 'rgba(28, 25, 23, 0.08)',
-                  boxShadow:
-                    '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
-                  shadowColor: '#1C1917',
-                  shadowOpacity: 0.1,
-                  shadowRadius: 24,
-                  shadowOffset: { width: 0, height: 10 },
-                  padding: 22,
-                  justifyContent: 'space-between',
-                },
-              ]}
-            >
-              <View style={{ flex: 1, minHeight: 0 }}>
-                <View className="flex-row items-center justify-between gap-2 mb-4">
-                  <Pressable onPress={toggleFlip} className="active:opacity-70">
-                    <Text
-                      className="font-bold text-ink consumer-display"
+                    <Text className="text-[24px] font-bold text-ink text-center tracking-[-0.4px] mb-2 consumer-display">
+                      You&apos;re all caught up
+                    </Text>
+                    {streakLine ? (
+                      <Text
+                        className="text-[15px] leading-[22px] font-semibold text-center max-w-[270px]"
+                        style={{ color: '#0F766E' }}
+                      >
+                        {streakLine}
+                      </Text>
+                    ) : null}
+                    {subtitleText ? (
+                      <Text
+                        className="text-[14.5px] leading-[21px] text-stone-500 text-center max-w-[270px]"
+                        style={streakLine ? { marginTop: 4 } : undefined}
+                      >
+                        {subtitleText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {(displaySavedCount > 0 && onOpenSavedForLater) ||
+                    onRequestOlderNews ? (
+                    <View
                       style={{
-                        fontSize: Math.round(17.5 * fontScale * 10) / 10,
+                        alignItems: 'center',
+                        gap: 12,
+                        paddingBottom: 20,
                       }}
                     >
-                      💡 Why it matters
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => openArticleUrl(currentArticle.original_url)}
-                    hitSlop={8}
-                    className="py-1 active:opacity-60"
-                  >
-                    <Text className="text-[13px] font-normal text-accent">
-                      Read source ↗
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <ScrollView
-                  style={{ flex: 1 }}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ flexGrow: 1, paddingBottom: 12 }}
-                >
-                  <Pressable onPress={toggleFlip} style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: Math.round(15.5 * fontScale * 10) / 10,
-                        lineHeight: Math.round(24 * fontScale * 10) / 10,
-                        color: '#44403C',
-                      }}
-                    >
-                      {currentArticle.ai_explanation ||
-                        'Tap to return to the story.'}
-                    </Text>
-                  </Pressable>
-                </ScrollView>
-              </View>
-
-              <View className="gap-4">
-                {/* Was it helpful? */}
-                <View className="pt-3.5 border-t border-stone-200/80">
-                  {(() => {
-                    const contextFeedback =
-                      contextFeedbackByArticle[currentArticle.id];
-                    if (contextFeedback?.step === 'note') {
-                      return (
-                        <View className="w-full">
-                          <Text className="text-[13px] font-medium text-ink mb-2">
-                            Thanks! Add another line?
+                      {displaySavedCount > 0 && onOpenSavedForLater ? (
+                        <Pressable
+                          onPress={onOpenSavedForLater}
+                          accessibilityLabel={`Open saved for later (${displaySavedCount})`}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            paddingHorizontal: 18,
+                            paddingVertical: 10,
+                            borderRadius: 999,
+                            backgroundColor: '#F0FDFA',
+                            borderWidth: 1,
+                            borderColor: 'rgba(13, 148, 136, 0.22)',
+                            ...(Platform.OS === 'web'
+                              ? ({ cursor: 'pointer' } as Record<
+                                  string,
+                                  unknown
+                                >)
+                              : {}),
+                          }}
+                        >
+                          <BookmarkIcon filled color="#0D9488" size={14} />
+                          <Text className="text-[14px] font-semibold text-accent">
+                            Open saved for later ({displaySavedCount})
                           </Text>
-                          <TextInput
-                            ref={contextNoteInputRef}
-                            value={contextNoteText}
-                            onChangeText={setContextNoteText}
-                            placeholder="Write a quick note..."
-                            placeholderTextColor="#A8A29E"
-                            multiline
-                            className="w-full bg-[#F5F4F0] border border-stone-200 rounded-2xl px-3.5 py-2.5 text-[14px] text-ink min-h-[68px] mb-2.5"
-                          />
-                          <View className="flex-row items-center justify-end gap-2">
-                            <Pressable
-                              onPress={() =>
-                                handleCancelContextNote(currentArticle.id)
-                              }
-                              disabled={sendingContextNote}
-                              className="px-3.5 py-1.5 rounded-full active:opacity-60"
-                            >
-                              <Text className="text-[13px] font-medium text-stone-500">
-                                Cancel
-                              </Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() =>
-                                void handleSendContextNote(currentArticle.id)
-                              }
-                              disabled={sendingContextNote}
-                              className="px-4 py-1.5 rounded-full bg-ink active:opacity-80"
-                            >
-                              <Text className="text-[13px] font-semibold text-white">
-                                {sendingContextNote ? 'Sending...' : 'Send'}
-                              </Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      );
-                    }
+                        </Pressable>
+                      ) : null}
 
-                    return (
-                      <>
-                        <Text className="text-[13px] font-medium text-stone-500 mb-2.5">
-                          Was it helpful?
+                      {onRequestOlderNews ? (
+                        <Text className="text-[13px] font-medium text-stone-400 text-center">
+                          Swipe to read older news
                         </Text>
-                        {contextFeedback ? (
-                          <Text className="text-[13px] font-medium text-accent">
-                            Thanks for your feedback! (
-                            {contextFeedback.sentiment === 'helpful'
-                              ? '😊 Yes, thanks'
-                              : '😞 Not really'}
-                            )
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+
+                <View className="pt-5 border-t border-stone-100 items-center w-full">
+                  {feedbackStep === 'idle' ? (
+                    <>
+                      <Text className="text-[15px] font-medium text-ink text-center mb-4">
+                        Did you enjoy reading today?
+                      </Text>
+                      <View className="flex-row items-center justify-center gap-5">
+                        {FEEDBACK_EMOJIS.map((item) => (
+                          <Pressable
+                            key={item.emoji}
+                            onPress={() => void handleSelectEmoji(item.emoji)}
+                            accessibilityLabel={item.label}
+                            className="w-12 h-12 rounded-full bg-[#F5F4F0] items-center justify-center active:scale-95 active:opacity-75"
+                          >
+                            <Text className="text-[24px]">{item.emoji}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </>
+                  ) : feedbackStep === 'note' ? (
+                    <View className="w-full">
+                      <Text className="text-[14.5px] font-medium text-ink text-center mb-3">
+                        Thanks! Add another line?
+                      </Text>
+                      <TextInput
+                        ref={noteInputRef}
+                        value={noteText}
+                        onChangeText={setNoteText}
+                        placeholder="Write a quick note..."
+                        placeholderTextColor="#A8A29E"
+                        autoFocus
+                        multiline
+                        className="w-full bg-[#F5F4F0] border border-stone-200 rounded-2xl px-3.5 py-2.5 text-[14.5px] text-ink min-h-[72px] mb-3"
+                      />
+                      <View className="flex-row items-center justify-end gap-2.5">
+                        <Pressable
+                          onPress={handleCancelNote}
+                          disabled={sendingNote}
+                          className="px-4 py-2 rounded-full active:opacity-60"
+                        >
+                          <Text className="text-[13.5px] font-medium text-stone-500">
+                            Cancel
                           </Text>
-                        ) : (
-                          <View className="flex-row flex-wrap items-center gap-2">
-                            <Pressable
-                              onPress={() =>
-                                void handleContextFeedback(
-                                  currentArticle,
-                                  'helpful'
-                                )
-                              }
-                              className="px-3.5 py-2 rounded-full bg-white border border-stone-200 active:opacity-70"
-                            >
-                              <Text className="text-[13px] font-medium text-ink">
-                                😊 Yes, thanks
-                              </Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() =>
-                                void handleContextFeedback(
-                                  currentArticle,
-                                  'not_helpful'
-                                )
-                              }
-                              className="px-3.5 py-2 rounded-full bg-white border border-stone-200 active:opacity-70"
-                            >
-                              <Text className="text-[13px] font-medium text-ink">
-                                😞 Not really
-                              </Text>
-                            </Pressable>
-                          </View>
-                        )}
-                      </>
-                    );
-                  })()}
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void handleSendNote()}
+                          disabled={sendingNote}
+                          className="px-5 py-2 rounded-full bg-ink active:opacity-80"
+                        >
+                          <Text className="text-[13.5px] font-semibold text-white">
+                            {sendingNote ? 'Sending...' : 'Send'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <Text className="text-[14.5px] font-medium text-accent text-center py-2">
+                      Thanks for your feedback!
+                    </Text>
+                  )}
                 </View>
               </View>
-            </Animated.View>
-          </Animated.View>
-        </GestureDetector>
-
-        {/* Previous (older) card pulled down from above when dragging downward */}
-        {prevOverlay}
-      </View>
+            </DeckSlotCard>
+          ) : null}
+        </View>
+      </GestureDetector>
     </View>
   );
 }

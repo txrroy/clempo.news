@@ -1,23 +1,23 @@
-import { useState } from 'react';
-import {
-  ActivityIndicator,
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  useWindowDimensions,
-} from 'react-native';
-import { Image } from 'expo-image';
 import { APP_CONFIG } from '@/config/appConfig';
-import { Fonts } from '@/constants/theme';
+import { getNewsFontStyle } from '@/constants/theme';
 import {
   formatEditionDate,
   getSourceLabel,
   openArticleUrl,
 } from '@/lib/consumerUtils';
-import { ThumbIcon } from './ThumbIcon';
 import type { ArticlePreferenceVote } from '@/lib/topicPreferences';
 import type { Article } from '@/types/article';
+import { Image } from 'expo-image';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { ThumbIcon } from './ThumbIcon';
 
 interface NewspaperFrontPageProps {
   articles: Article[];
@@ -41,7 +41,10 @@ function ArticleContextDrawer({ explanation }: { explanation: string }) {
       <Text className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-500 mb-1">
         Background Context
       </Text>
-      <Text className="text-[13.5px] leading-[21px] text-stone-700">
+      <Text
+        style={getNewsFontStyle('400')}
+        className="text-[13.5px] leading-[21px] text-stone-700"
+      >
         {explanation}
       </Text>
     </View>
@@ -151,13 +154,16 @@ function LeadStory({
           </View>
 
           <Text
-            style={{ fontFamily: Fonts?.serif }}
-            className="text-[32px] leading-[38px] font-bold text-ink tracking-[-0.4px] mb-3.5"
+            style={getNewsFontStyle('700')}
+            className="text-[32px] leading-[38px] text-ink tracking-[-0.4px] mb-3.5"
           >
             {article.ai_headline}
           </Text>
 
-          <Text className="text-[16.5px] leading-[27px] text-stone-700 mb-4">
+          <Text
+            style={getNewsFontStyle('400')}
+            className="text-[16.5px] leading-[27px] text-stone-700 mb-4"
+          >
             {article.ai_summary}
           </Text>
 
@@ -268,8 +274,8 @@ function ColumnStory({
       ) : null}
 
       <Text
-        style={{ fontFamily: Fonts?.serif }}
-        className="text-[20px] leading-[26px] font-bold text-ink tracking-[-0.2px] mb-3"
+        style={getNewsFontStyle('700')}
+        className="text-[20px] leading-[26px] text-ink tracking-[-0.2px] mb-3"
       >
         {article.ai_headline}
       </Text>
@@ -290,7 +296,10 @@ function ColumnStory({
         </View>
       ) : null}
 
-      <Text className="text-[15px] leading-[24px] text-stone-700 mb-3">
+      <Text
+        style={getNewsFontStyle('400')}
+        className="text-[15px] leading-[24px] text-stone-700 mb-3"
+      >
         {article.ai_summary}
       </Text>
 
@@ -395,11 +404,11 @@ export function NewspaperFrontPage({
               style={{ width: 38, height: 38, borderRadius: 9 }}
             />
             <Text
-              style={{ fontFamily: Fonts?.serif }}
+              style={getNewsFontStyle('700')}
               className={
                 isNarrowWeb
-                  ? 'text-[34px] leading-[40px] font-bold text-ink text-center tracking-[-0.8px]'
-                  : 'text-[44px] leading-[50px] font-bold text-ink text-center tracking-[-0.8px]'
+                  ? 'text-[34px] leading-[40px] text-ink text-center tracking-[-0.8px]'
+                  : 'text-[44px] leading-[50px] text-ink text-center tracking-[-0.8px]'
               }
             >
               {APP_CONFIG.title}

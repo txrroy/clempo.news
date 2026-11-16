@@ -32,6 +32,7 @@ import {
   getWhyThisNeedsYouMessage,
   isSnippetOnlyUnverified,
 } from '@/lib/editorialLabels';
+import { computeWordDiff } from '@/lib/textDiff';
 import type { Article, ArticleFlag, ReadingLevel } from '@/types/article';
 import { BottomDrawer } from './BottomDrawer';
 
@@ -350,6 +351,7 @@ export function ArticleReaderPane({
   const [headline, setHeadline] = useState(article.ai_headline);
   const [summary, setSummary] = useState(article.ai_summary);
   const [editingDraftText, setEditingDraftText] = useState(false);
+  const [showRetryDiff, setShowRetryDiff] = useState(true);
   const [busyAction, setBusyAction] = useState<
     | 'save'
     | 'approve'
@@ -752,14 +754,14 @@ export function ArticleReaderPane({
 
           <DSDivider />
 
-          {/* Summarizer */}
-          <View style={{ gap: theme.spacing.xxs }}>
+          {/* Summarizer & Autonomous Retry Diff */}
+          <View style={{ gap: theme.spacing.xs }}>
             <DSText variant="caption" weight="semibold" tone="primary">
               2. Summarizer · Policy{' '}
               {snapshot?.prompt_version || article.prompt_version || 'v1'} ·{' '}
               {snapshot?.reading_level || 'grade 6'} · ~
               {snapshot?.target_summary_words || 60} words
-              {article.auto_retried_complexity ? ' · Auto-simplified once' : ''}
+              {article.auto_retried_complexity ? ' · Auto-retried once' : ''}
             </DSText>
             <DSText variant="caption" tone="secondary">
               {summarizerStep?.summary ||
@@ -778,6 +780,149 @@ export function ArticleReaderPane({
             <DSText variant="micro" tone="tertiary">
               {snapshot?.locked_core_summary || LOCKED_CORE_SUMMARY}
             </DSText>
+
+            {article.retry_history && article.retry_history.length > 0 ? (
+              <DSSurface
+                variant="muted"
+                radius="sm"
+                bordered
+                style={{
+                  marginTop: theme.spacing.xs,
+                  padding: theme.spacing.md,
+                  gap: theme.spacing.sm,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: theme.spacing.sm,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: theme.spacing.xs,
+                    }}
+                  >
+                    <DSBadge label="Self-Correction" tone="info" />
+                    <DSText variant="caption" weight="semibold" tone="primary">
+                      Draft 1 → Draft 2 (Attempt {article.retry_history[0].attempt})
+                    </DSText>
+                  </View>
+                  <Pressable onPress={() => setShowRetryDiff((v) => !v)}>
+                    <DSText
+                      variant="caption"
+                      weight="semibold"
+                      tone="accent"
+                      style={{ textDecorationLine: 'underline' }}
+                    >
+                      {showRetryDiff ? 'Hide diff' : 'Show Draft 1 → Draft 2 diff'}
+                    </DSText>
+                  </Pressable>
+                </View>
+
+                {article.retry_history.map((entry, rIdx) => {
+                  const beforeRead = Math.round(
+                    entry.before.scores?.readability ?? entry.before.confidence_score
+                  );
+                  const afterRead = Math.round(
+                    entry.after.scores?.readability ?? entry.after.confidence_score
+                  );
+                  const beforeConf = Math.round(entry.before.confidence_score);
+                  const afterConf = Math.round(entry.after.confidence_score);
+                  const headlineDiff = computeWordDiff(
+                    entry.before.ai_headline,
+                    entry.after.ai_headline
+                  );
+                  const summaryDiff = computeWordDiff(
+                    entry.before.ai_summary,
+                    entry.after.ai_summary
+                  );
+
+                  return (
+                    <View key={`retry-${rIdx}`} style={{ gap: theme.spacing.xs }}>
+                      <DSText variant="caption" tone="secondary">
+                        Trigger: {entry.trigger} · Readability {beforeRead} →{' '}
+                        {afterRead}/100 · Confidence {beforeConf} → {afterConf}
+                        /100
+                      </DSText>
+                      <DSText variant="micro" tone="tertiary">
+                        Flags: {(entry.before.flags ?? []).join(', ') || 'None'} →{' '}
+                        {(entry.after.flags ?? []).join(', ') || 'None'}
+                      </DSText>
+
+                      {showRetryDiff ? (
+                        <View style={{ gap: theme.spacing.xs, paddingTop: 4 }}>
+                          <DSText variant="micro" weight="semibold" tone="primary">
+                            Headline diff (Draft 1 → Draft 2):
+                          </DSText>
+                          <DSText variant="caption" tone="primary">
+                            {headlineDiff.map((tok, tIdx) => (
+                              <DSText
+                                key={`hd-${tIdx}`}
+                                variant="caption"
+                                weight={tok.type === 'added' ? 'semibold' : 'regular'}
+                                tone={
+                                  tok.type === 'removed'
+                                    ? 'tertiary'
+                                    : tok.type === 'added'
+                                      ? 'success'
+                                      : 'primary'
+                                }
+                                style={
+                                  tok.type === 'removed'
+                                    ? { textDecorationLine: 'line-through' }
+                                    : tok.type === 'added'
+                                      ? { textDecorationLine: 'underline' }
+                                      : undefined
+                                }
+                              >
+                                {tIdx > 0 ? ' ' : ''}
+                                {tok.text}
+                              </DSText>
+                            ))}
+                          </DSText>
+
+                          <DSText variant="micro" weight="semibold" tone="primary">
+                            Summary diff (Draft 1 → Draft 2):
+                          </DSText>
+                          <DSText variant="caption" tone="primary">
+                            {summaryDiff.map((tok, tIdx) => (
+                              <DSText
+                                key={`sd-${tIdx}`}
+                                variant="caption"
+                                weight={tok.type === 'added' ? 'semibold' : 'regular'}
+                                tone={
+                                  tok.type === 'removed'
+                                    ? 'tertiary'
+                                    : tok.type === 'added'
+                                      ? 'success'
+                                      : 'primary'
+                                }
+                                style={
+                                  tok.type === 'removed'
+                                    ? { textDecorationLine: 'line-through' }
+                                    : tok.type === 'added'
+                                      ? { textDecorationLine: 'underline' }
+                                      : undefined
+                                }
+                              >
+                                {tIdx > 0 ? ' ' : ''}
+                                {tok.text}
+                              </DSText>
+                            ))}
+                          </DSText>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </DSSurface>
+            ) : null}
           </View>
 
           <DSDivider />
@@ -785,7 +930,8 @@ export function ArticleReaderPane({
           {/* Judge */}
           <View style={{ gap: theme.spacing.xs }}>
             <DSText variant="caption" weight="semibold" tone="primary">
-              3. Judge · {editorialState} ·{' '}
+              3. Judge · {editorialState} · Confidence{' '}
+              {Math.round(article.confidence_score ?? 0)}/100 ·{' '}
               {flags.length > 0 ? flags.map(getFlagShortLabel).join(', ') : 'No flags'}
             </DSText>
 
