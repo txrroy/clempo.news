@@ -8,7 +8,11 @@ export const APP_CONFIG = {
   /** Show per-topic accent colors and flat simple icons in the drawer and card pills */
   showTopicColorsAndIcons: true,
   /** Admin email addresses (full access including Tier 2 free-text policy instructions) */
-  adminEmails: ['txrroy@gmail.com'] as readonly string[],
+  adminEmails: [
+    'txrroy@gmail.com',
+    'riteshtiwari@gmail.com',
+    'riteshtiwari.research@gmail.com',
+  ] as readonly string[],
   /** Editor email addresses (access to queue, Tier 1 settings, analytics, and sources) */
   editorEmails: [] as readonly string[],
 } as const;

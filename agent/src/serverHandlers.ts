@@ -53,7 +53,7 @@ interface HttpResponse {
 }
 
 const ALLOWED_EMAILS = new Set(
-  (process.env.ADMIN_EMAILS || 'txrroy@gmail.com')
+  (process.env.ADMIN_EMAILS || 'txrroy@gmail.com,riteshtiwari@gmail.com,riteshtiwari.research@gmail.com')
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean)
