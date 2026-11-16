@@ -1,6 +1,11 @@
 import type { ArticleInboxView } from '@/components/admin/ArticleInboxList';
 import type { InboxFolder } from '@/components/admin/InboxSidebar';
 import {
+  PipelineTree,
+  type PipelineStepId,
+  type PipelineTreeNode,
+} from '@/components/admin/PipelineTree';
+import {
   DSBadge,
   DSButton,
   DSCard,
@@ -282,8 +287,6 @@ function EditorialDonutChart({
   );
 }
 
-type PipelineStepId = '1' | '2' | '3' | '4' | '5';
-
 export function EditorOverviewPane({
   articles,
   today,
@@ -536,6 +539,145 @@ export function EditorOverviewPane({
   }, [articles]);
 
   const waitingCount = todayData.counts.needsReview;
+  const pipelineTreeRoot = useMemo<PipelineTreeNode>(() => {
+    const judgeChildren: PipelineTreeNode[] = [
+      {
+        id: 'step-5-signoff',
+        stepId: '5',
+        title: '5. Editor sign-off',
+        metric:
+          waitingCount > 0
+            ? `${waitingCount} waiting`
+            : `${todayData.counts.published} published`,
+        sublabel:
+          todayData.counts.rejected > 0
+            ? `${todayData.counts.published} pub · ${todayData.counts.rejected} rej`
+            : `${todayData.counts.published} published`,
+        tone: waitingCount > 0 ? 'accent' : 'success',
+      },
+    ];
+
+    if (todayData.runNeedsCheckCount > 0) {
+      judgeChildren.push({
+        id: 'leaf-needs-check',
+        stepId: '4',
+        title: 'Flagged for check',
+        metric: `${todayData.runNeedsCheckCount} stories`,
+        sublabel: 'Click to inspect',
+        tone: 'warning',
+        muted: true,
+      });
+    }
+
+    if (todayData.runUnverifiedCount > 0) {
+      judgeChildren.push({
+        id: 'leaf-unverified',
+        stepId: '4',
+        title: 'Could not verify',
+        metric: `${todayData.runUnverifiedCount} stories`,
+        sublabel: 'Snippet fallback',
+        tone: 'danger',
+        muted: true,
+      });
+    }
+
+    const draftChildren: PipelineTreeNode[] = [
+      {
+        id: 'step-4-judge',
+        stepId: '4',
+        title: '4. Check facts · Judge',
+        metric: `${todayData.runReadyCount} passed (run)`,
+        sublabel:
+          todayData.runNeedsCheckCount + todayData.runUnverifiedCount > 0
+            ? `${todayData.runNeedsCheckCount + todayData.runUnverifiedCount} flagged`
+            : 'All passed',
+        children: judgeChildren,
+      },
+    ];
+
+    if (todayData.snippetCount > 0) {
+      draftChildren.push({
+        id: 'leaf-snippets',
+        stepId: '3',
+        title: 'RSS snippet fallback',
+        metric: `${todayData.snippetCount} stories`,
+        sublabel: 'Scrape blocked',
+        tone: 'warning',
+        muted: true,
+      });
+    }
+
+    if (todayData.autoRetriedCount > 0) {
+      draftChildren.push({
+        id: 'leaf-auto-retry',
+        stepId: '3',
+        title: 'Auto-simplified',
+        metric: `${todayData.autoRetriedCount} retried`,
+        sublabel: 'Too complex loop',
+        muted: true,
+      });
+    }
+
+    const filterChildren: PipelineTreeNode[] = [
+      {
+        id: 'step-3-draft',
+        stepId: '3',
+        title: '3. Scrape & draft',
+        metric: `${todayData.fullTextCount} full text`,
+        sublabel: `${todayData.pickedCount} drafted`,
+        children: draftChildren,
+      },
+    ];
+
+    if (todayData.hasRealStep1Stats && todayData.filteredEvents > 0) {
+      filterChildren.push({
+        id: 'leaf-filtered',
+        stepId: '2',
+        title: 'Filtered by caps',
+        metric: `${todayData.filteredEvents} dropped`,
+        sublabel: 'Topic/region limits',
+        muted: true,
+      });
+    }
+
+    const scanChildren: PipelineTreeNode[] = [
+      {
+        id: 'step-2-filter',
+        stepId: '2',
+        title: '2. Filter & rank',
+        metric: `${todayData.pickedCount} picked`,
+        sublabel: todayData.hasRealStep1Stats
+          ? `from ${todayData.newCandidatesCount} new`
+          : `${todayData.topicCount} topics · ${todayData.regionCount} regions`,
+        children: filterChildren,
+      },
+    ];
+
+    if (todayData.hasRealStep1Stats && todayData.alreadySeenCount > 0) {
+      scanChildren.push({
+        id: 'leaf-seen-earlier',
+        stepId: '2',
+        title: 'Seen earlier',
+        metric: `${todayData.alreadySeenCount} skipped`,
+        sublabel: 'Recent editions',
+        muted: true,
+      });
+    }
+
+    return {
+      id: 'step-1-scan',
+      stepId: '1',
+      title: '1. Scan & merge',
+      metric: todayData.hasRealStep1Stats
+        ? `${todayData.mergedEvents} unique`
+        : `${todayData.feedsPolledCount} RSS feeds`,
+      sublabel: todayData.hasRealStep1Stats
+        ? `${todayData.rawHeadlines} total · ${todayData.duplicatesMerged} merged`
+        : `${todayData.uniqueOutletCount} cited outlets`,
+      children: scanChildren,
+    };
+  }, [todayData, waitingCount]);
+
   const missedRunNotice = useMemo(
     () => getMissedRunNotice(latestRunLog, today),
     [latestRunLog, today]
@@ -1011,192 +1153,12 @@ export function EditorOverviewPane({
               </DSText>
             </View>
 
-            {/* FIVE STEPS IN A ROW BY DEFAULT WITH ARROWS BETWEEN BOXES */}
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                alignItems: 'stretch',
-                gap: theme.spacing.xs,
-              }}
-            >
-              {[
-                {
-                  id: '1' as PipelineStepId,
-                  name: '1. Scan and merge',
-                  who: 'Fetcher',
-                  number: todayData.hasRealStep1Stats
-                    ? `${todayData.mergedEvents} unique stories`
-                    : `${todayData.feedsPolledCount} RSS feeds`,
-                  line: todayData.hasRealStep1Stats
-                    ? `${todayData.rawHeadlines} total, ${todayData.duplicatesMerged} duplicates`
-                    : `${todayData.uniqueOutletCount} cited outlets · ${todayData.multiSourceStories.length} multi-outlet`,
-                },
-                {
-                  id: '2' as PipelineStepId,
-                  name: '2. Filter and rank',
-                  who: 'Selector',
-                  number: `${todayData.pickedCount} picked`,
-                  line: todayData.hasRealStep1Stats
-                    ? todayData.alreadySeenCount > 0
-                      ? `from ${todayData.newCandidatesCount} new (${todayData.alreadySeenCount} seen earlier)`
-                      : `from ${todayData.newCandidatesCount} new stories`
-                    : `${todayData.topicCount} topics · ${todayData.regionCount} regions`,
-                },
-                {
-                  id: '3' as PipelineStepId,
-                  name: '3. Scrape and draft',
-                  who: 'Summarizer',
-                  number: `${todayData.fullTextCount} full text`,
-                  line: `${
-                    todayData.snippetCount > 0
-                      ? `${todayData.snippetCount} from RSS snippets`
-                      : '0 snippet fallbacks'
-                  }${
-                    todayData.autoRetriedCount > 0
-                      ? ` · ${todayData.autoRetriedCount} auto-simplified`
-                      : ''
-                  }`,
-                },
-                {
-                  id: '4' as PipelineStepId,
-                  name: '4. Check facts',
-                  who: 'Judge',
-                  number: `${todayData.runReadyCount} ready`,
-                  line:
-                    todayData.runUnverifiedCount > 0
-                      ? `${todayData.runNeedsCheckCount} needs check · ${todayData.runUnverifiedCount} unverified`
-                      : `${todayData.runNeedsCheckCount} needs check`,
-                },
-                {
-                  id: '5' as PipelineStepId,
-                  name: '5. Editor sign-off',
-                  who: 'Editor',
-                  number:
-                    waitingCount > 0
-                      ? `${waitingCount} waiting`
-                      : `${todayData.counts.published} published`,
-                  line:
-                    waitingCount > 0
-                      ? todayData.counts.rejected > 0
-                        ? `${todayData.counts.published} published · ${todayData.counts.rejected} rejected`
-                        : `${todayData.counts.published} published so far`
-                      : todayData.counts.rejected > 0
-                        ? `${todayData.counts.rejected} rejected · 0 waiting`
-                        : '0 waiting for review',
-                },
-              ].map((step, index, arr) => {
-                const isExpanded = expandedStep === step.id;
-                return (
-                  <View
-                    key={step.id}
-                    style={{
-                      flex: 1,
-                      minWidth: 195,
-                      flexDirection: 'row',
-                      alignItems: 'stretch',
-                      gap: theme.spacing.xs,
-                    }}
-                  >
-                    <DSSurface
-                      variant={isExpanded ? 'surface' : 'surface'}
-                      radius="md"
-                      bordered
-                      style={{
-                        flex: 1,
-                        padding: theme.spacing.md,
-                        justifyContent: 'space-between',
-                        gap: theme.spacing.sm,
-                        backgroundColor: isExpanded
-                          ? theme.colors.accentSoft
-                          : theme.colors.surface,
-                        borderColor: isExpanded
-                          ? theme.colors.accent
-                          : theme.colors.borderDefault,
-                      }}
-                    >
-                      <View style={{ gap: theme.spacing.xs }}>
-                        <DSText variant="footnote" weight="bold" tone="primary">
-                          {step.name}
-                        </DSText>
-                        <DSText variant="caption" tone="secondary">
-                          {step.who}
-                        </DSText>
-                        <DSText
-                          variant="title3"
-                          weight="bold"
-                          tone="primary"
-                          tabularNums
-                          style={{ paddingTop: theme.spacing.xs }}
-                        >
-                          {step.number}
-                        </DSText>
-                        <DSText variant="caption" tone="secondary">
-                          {step.line}
-                        </DSText>
-                      </View>
-
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-                        <Pressable
-                          onPress={() =>
-                            setExpandedStep(isExpanded ? null : step.id)
-                          }
-                          accessibilityLabel={
-                            isExpanded
-                              ? `Collapse ${step.name} explanation`
-                              : `Expand ${step.name} explanation`
-                          }
-                          style={({ pressed }) => ({
-                            width: 28,
-                            height: 28,
-                            borderRadius: theme.radii.pill,
-                            backgroundColor: isExpanded
-                              ? theme.colors.accent
-                              : theme.colors.surfaceMuted,
-                            borderWidth: theme.layout.borderWidth,
-                            borderColor: isExpanded
-                              ? theme.colors.accent
-                              : theme.colors.borderDefault,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: pressed ? 0.72 : 1,
-                          })}
-                        >
-                          <DSText
-                            variant="caption"
-                            weight="bold"
-                            tone={isExpanded ? 'inverse' : 'primary'}
-                          >
-                            {isExpanded ? '▴' : '▾'}
-                          </DSText>
-                        </Pressable>
-                      </View>
-                    </DSSurface>
-
-                    {/* Arrow between step boxes */}
-                    {index < arr.length - 1 ? (
-                      <View
-                        style={{
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          paddingHorizontal: theme.spacing.xxs,
-                        }}
-                      >
-                        <DSText variant="subhead" weight="bold" tone="tertiary">
-                          →
-                        </DSText>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
-            </View>
+            {/* D3 Hierarchy Tree Visualization of the Full Pipeline */}
+            <PipelineTree
+              rootData={pipelineTreeRoot}
+              selectedStep={expandedStep}
+              onSelectStep={setExpandedStep}
+            />
 
             {/* EXPLANATION BOXES:
                 1. Noun phrase heading
