@@ -35,6 +35,7 @@ import {
   useDSTheme,
 } from '@/design-system';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { BUILD_INFO } from '@/config/buildInfo';
 import { useAdminArticles } from '@/hooks/useArticles';
 import {
   useAgentPolicy,
@@ -374,6 +375,9 @@ function AdminDashboardContent() {
               />
               <DSText variant="footnote" weight="bold" tone="primary">
                 SnappyLit Studio
+              </DSText>
+              <DSText variant="micro" tone="tertiary" tabularNums>
+                {BUILD_INFO.label}
               </DSText>
             </Pressable>
 

@@ -18,6 +18,7 @@ import { ArticleReaderDrawer } from '@/components/admin/ArticleReaderDrawer';
 import { LivePipelineDrawer } from '@/components/admin/LivePipelineDrawer';
 import { DSThemeProvider } from '@/design-system';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { BUILD_INFO } from '@/config/buildInfo';
 import { useAdminArticles } from '@/hooks/useArticles';
 import {
   useAgentPolicy,
@@ -176,9 +177,14 @@ function AdminV3Content() {
               flexWrap: 'wrap',
             }}
           >
-            <V3Text role="headline" weight="700">
-              SnappyLit
-            </V3Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: V3_SPACE.sm }}>
+              <V3Text role="headline" weight="700">
+                SnappyLit
+              </V3Text>
+              <V3Text role="mono" tone="muted">
+                {BUILD_INFO.label}
+              </V3Text>
+            </View>
 
             <View
               style={{
