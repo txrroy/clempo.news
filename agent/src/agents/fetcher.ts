@@ -657,3 +657,136 @@ export async function extractFullArticle(
     usedFallbackSnippet: true,
   };
 }
+
+export interface OtherOutletSource {
+  name: string;
+  url: string;
+  text: string;
+}
+
+function getHostname(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Searches unused alternate URLs, enabled RSS feeds, and Google News RSS
+ * for other outlets covering the same story, and extracts their article text.
+ */
+export async function searchOtherOutletsForStory(params: {
+  headline: string;
+  originalUrl: string;
+  alternateUrls: string[];
+  existingSourceNames: string[];
+  sources: RssSource[];
+  maxOutlets?: number;
+  onProgress?: (message: string) => void;
+}): Promise<OtherOutletSource[]> {
+  const maxOutlets = params.maxOutlets ?? 2;
+  const origHost = getHostname(params.originalUrl);
+  const existingNamesLower = new Set(
+    params.existingSourceNames.map((n) => n.toLowerCase())
+  );
+  const queryTokens = Array.from(normalizeTokens(params.headline)).slice(0, 6);
+
+  const candidates: { name: string; url: string; snippet?: string }[] = [];
+  const seenUrls = new Set<string>([params.originalUrl]);
+
+  // 1. Any stored alternate URLs on the article
+  for (const altUrl of params.alternateUrls) {
+    if (!altUrl || seenUrls.has(altUrl)) continue;
+    seenUrls.add(altUrl);
+    candidates.push({
+      name: getHostname(altUrl) || 'Alternate outlet',
+      url: altUrl,
+    });
+  }
+
+  // 2. Live enabled RSS feeds matching this story's headline tokens
+  params.onProgress?.('Scanning enabled RSS feeds for matching coverage...');
+  try {
+    const rssItems = await fetchRssCandidates(params.sources);
+    for (const item of rssItems) {
+      if (!item.link || seenUrls.has(item.link)) continue;
+      if (getHostname(item.link) === origHost) continue;
+      const itemTokens = normalizeTokens(item.title);
+      let overlap = 0;
+      for (const tok of queryTokens) {
+        if (itemTokens.has(tok)) overlap += 1;
+      }
+      if (isSameTitle(params.headline, item.title) || overlap >= 2) {
+        seenUrls.add(item.link);
+        candidates.push({
+          name: item.source,
+          url: item.link,
+          snippet: item.snippet,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('RSS search for other outlets failed:', err);
+  }
+
+  // 3. Google News RSS search for broader cross-outlet viewpoints
+  if (queryTokens.length >= 2) {
+    params.onProgress?.('Searching external news outlets for alternate viewpoints...');
+    try {
+      const q = encodeURIComponent(queryTokens.join(' '));
+      const gNewsUrl = `https://news.google.com/rss/search?q=${q}&hl=en-US&gl=US&ceid=US:en`;
+      const feed = await rssParser.parseURL(gNewsUrl);
+      for (const entry of (feed.items ?? []).slice(0, 12)) {
+        const link = (entry.link || '').trim();
+        if (!link || seenUrls.has(link)) continue;
+        const rawTitle = (entry.title || '').trim();
+        const dashIdx = rawTitle.lastIndexOf(' - ');
+        const outletName =
+          dashIdx > 0 ? rawTitle.slice(dashIdx + 3).trim() : 'External outlet';
+        if (existingNamesLower.has(outletName.toLowerCase())) continue;
+        seenUrls.add(link);
+        candidates.push({
+          name: outletName,
+          url: link,
+          snippet: (entry.contentSnippet || entry.content || '').trim(),
+        });
+      }
+    } catch (err) {
+      console.warn('Google News RSS search for other outlets failed:', err);
+    }
+  }
+
+  if (candidates.length > 0) {
+    params.onProgress?.(
+      `Found ${candidates.length} candidate article(s); extracting full text...`
+    );
+  }
+
+  const results: OtherOutletSource[] = [];
+  const usedHosts = new Set<string>(origHost ? [origHost] : []);
+
+  for (const cand of candidates) {
+    if (results.length >= maxOutlets) break;
+    params.onProgress?.(`Reading ${cand.name}...`);
+    const scraped = await scrapeSingleUrl(cand.url, null);
+    if (scraped) {
+      const scrapedHost = getHostname(scraped.url);
+      if (scrapedHost && usedHosts.has(scrapedHost)) continue;
+      if (scrapedHost) usedHosts.add(scrapedHost);
+      results.push({
+        name: cand.name,
+        url: scraped.url,
+        text: scraped.text.slice(0, 3500),
+      });
+    } else if (cand.snippet && cand.snippet.length >= 80) {
+      results.push({
+        name: cand.name,
+        url: cand.url,
+        text: cand.snippet,
+      });
+    }
+  }
+
+  return results;
+}

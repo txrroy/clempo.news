@@ -136,6 +136,10 @@ export interface RegenerateResponse {
     scores: JudgeScores;
     flags: ArticleFlag[];
     claims: JudgeClaim[];
+    addedSources?: { name: string; url: string }[];
+    source_text?: string;
+    source_names?: string[];
+    alternate_urls?: string[];
   };
   instructionsSnapshot: AgentInstructionsSnapshot;
   traceStep: PipelineTraceStep;
@@ -155,14 +159,24 @@ export interface PolicyTestSample {
   candidateReasoning: string;
 }
 
+export interface RegenerateProgressEvent {
+  agent: string;
+  message: string;
+  status: 'running' | 'done' | 'warn';
+  at: string;
+}
+
 export async function regenerateDraftRequest(params: {
   articleId: string;
   readingLevel: ReadingLevel;
   targetSummaryWords: number;
   redirectInstructions: string;
   tryAlternateSource?: boolean;
+  addOtherSide?: boolean;
   idToken: string;
+  onProgress?: (event: RegenerateProgressEvent) => void;
 }): Promise<RegenerateResponse> {
+  const wantsStream = Boolean(params.onProgress);
   const res = await fetch(`${getApiBaseUrl()}/api/regenerate`, {
     method: 'POST',
     headers: {
@@ -175,13 +189,60 @@ export async function regenerateDraftRequest(params: {
       targetSummaryWords: params.targetSummaryWords,
       redirectInstructions: params.redirectInstructions,
       tryAlternateSource: params.tryAlternateSource,
+      addOtherSide: params.addOtherSide,
+      stream: wantsStream,
     }),
   });
 
-  const data = (await res.json()) as RegenerateResponse & { error?: string };
   if (!res.ok) {
-    throw new Error(data.error || `Regeneration failed (${res.status})`);
+    const errData = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errData.error || `Regeneration failed (${res.status})`);
   }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (wantsStream && contentType.includes('text/event-stream') && res.body?.getReader) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalResult: RegenerateResponse | null = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+      for (const chunk of parts) {
+        const line = chunk
+          .split('\n')
+          .find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const parsed = JSON.parse(line.slice(6)) as
+          | ({ type: 'progress' } & RegenerateProgressEvent)
+          | { type: 'result'; data: RegenerateResponse }
+          | { type: 'error'; error: string };
+        if (parsed.type === 'progress') {
+          params.onProgress?.({
+            agent: parsed.agent,
+            message: parsed.message,
+            status: parsed.status,
+            at: parsed.at,
+          });
+        } else if (parsed.type === 'error') {
+          throw new Error(parsed.error || 'Regeneration failed');
+        } else if (parsed.type === 'result') {
+          finalResult = parsed.data;
+        }
+      }
+    }
+
+    if (!finalResult) {
+      throw new Error('Stream ended before receiving regenerated draft');
+    }
+    return finalResult;
+  }
+
+  const data = (await res.json()) as RegenerateResponse & { error?: string };
   return data;
 }
 
@@ -201,6 +262,16 @@ export async function acceptRegeneratedDraft(
     scores: result.after.scores,
     flags: result.after.flags,
     claims: result.after.claims,
+    ...(result.after.source_text ? { source_text: result.after.source_text } : {}),
+    ...(result.after.source_names
+      ? {
+          source_names: result.after.source_names,
+          source_count: result.after.source_names.length,
+        }
+      : {}),
+    ...(result.after.alternate_urls
+      ? { alternate_urls: result.after.alternate_urls }
+      : {}),
     instructions_snapshot: result.instructionsSnapshot,
     edited_at: now,
     pipeline_trace: arrayUnion(result.traceStep),

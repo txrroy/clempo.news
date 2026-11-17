@@ -22,6 +22,7 @@ import {
   acceptRegeneratedDraft,
   LOCKED_CORE_SUMMARY,
   regenerateDraftRequest,
+  type RegenerateProgressEvent,
   type RegenerateResponse,
 } from '@/hooks/useGovernance';
 import {
@@ -374,6 +375,7 @@ export function ArticleReaderPane({
   const [regenPreview, setRegenPreview] = useState<RegenerateResponse | null>(
     null
   );
+  const [liveSteps, setLiveSteps] = useState<RegenerateProgressEvent[]>([]);
 
   const { width: windowWidth } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(0);
@@ -661,9 +663,12 @@ export function ArticleReaderPane({
     redirectInstructions: string;
     readingLevel?: ReadingLevel;
     tryAlternateSource?: boolean;
+    addOtherSide?: boolean;
   }) => {
     setBusyAction('regen');
     setFeedback(null);
+    setRegenPreview(null);
+    setLiveSteps([]);
     if (options.readingLevel) {
       setRegenLevel(options.readingLevel);
     }
@@ -676,7 +681,9 @@ export function ArticleReaderPane({
         targetSummaryWords: regenWords,
         redirectInstructions: options.redirectInstructions,
         tryAlternateSource: options.tryAlternateSource,
+        addOtherSide: options.addOtherSide,
         idToken: token,
+        onProgress: (ev) => setLiveSteps((prev) => [...prev, ev]),
       });
       setRegenPreview(result);
     } catch (err) {
@@ -697,6 +704,7 @@ export function ArticleReaderPane({
       setHeadline(regenPreview.after.ai_headline);
       setSummary(regenPreview.after.ai_summary);
       setRegenPreview(null);
+      setLiveSteps([]);
       setRegenRedirect('');
       setFeedback('Updated draft & Judge verification applied.');
     } catch (err) {
@@ -1304,6 +1312,7 @@ export function ArticleReaderPane({
                   disabled={busyAction !== null}
                   onPress={() =>
                     void handleRunAgentAction({
+                      addOtherSide: true,
                       redirectInstructions:
                         'Present each side’s position in one calm, neutral attributed sentence so the summary is balanced.',
                     })
@@ -1442,6 +1451,60 @@ export function ArticleReaderPane({
             </DSSurface>
           ) : null}
 
+          {liveSteps.length > 0 && (busyAction === 'regen' || regenPreview) ? (
+            <DSSurface
+              variant="surface"
+              radius="sm"
+              bordered
+              style={{
+                padding: theme.spacing.md,
+                gap: theme.spacing.xs,
+              }}
+            >
+              <DSText variant="micro" weight="semibold" tone="secondary">
+                Live agent activity
+              </DSText>
+              {liveSteps.map((step, i) => {
+                const icon =
+                  step.status === 'done'
+                    ? '✓'
+                    : step.status === 'warn'
+                      ? '!'
+                      : '•';
+                const tone =
+                  step.status === 'done'
+                    ? 'success'
+                    : step.status === 'warn'
+                      ? 'warning'
+                      : 'accent';
+                return (
+                  <View
+                    key={`${step.at}-${i}`}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: theme.spacing.sm,
+                    }}
+                  >
+                    <DSText variant="caption" weight="bold" tone={tone}>
+                      {icon}
+                    </DSText>
+                    <DSText variant="caption" weight="semibold" tone="primary">
+                      {step.agent}:
+                    </DSText>
+                    <DSText
+                      variant="caption"
+                      tone="secondary"
+                      style={{ flex: 1 }}
+                    >
+                      {step.message}
+                    </DSText>
+                  </View>
+                );
+              })}
+            </DSSurface>
+          ) : null}
+
           {regenPreview ? (
             <DSSurface
               variant="surface"
@@ -1465,6 +1528,15 @@ export function ArticleReaderPane({
               <DSText variant="caption" tone="secondary">
                 Judge check: {regenPreview.after.confidence_reasoning}
               </DSText>
+              {regenPreview.after.addedSources &&
+              regenPreview.after.addedSources.length > 0 ? (
+                <DSText variant="caption" weight="semibold" tone="accent">
+                  Consulted &amp; cited outlets:{' '}
+                  {regenPreview.after.addedSources
+                    .map((s) => s.name)
+                    .join(', ')}
+                </DSText>
+              ) : null}
               <View
                 style={{
                   flexDirection: 'row',
@@ -1476,7 +1548,10 @@ export function ArticleReaderPane({
                   label="Discard"
                   variant="secondary"
                   size="sm"
-                  onPress={() => setRegenPreview(null)}
+                  onPress={() => {
+                    setRegenPreview(null);
+                    setLiveSteps([]);
+                  }}
                 />
                 <DSButton
                   label="Accept Rewrite"

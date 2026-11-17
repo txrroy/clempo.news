@@ -103,20 +103,22 @@ function scaleFont(baseSize: number, fontScale: number): number {
 function ArticleSummaryPoints({
   article,
   fontScale,
+  compact = false,
 }: {
   article: Article;
   fontScale: number;
+  compact?: boolean;
 }) {
   const points = splitSummaryIntoPoints(article.ai_summary);
   const sansStyle = Fonts?.sans
     ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
     : {};
   const sectionLabelSize = scaleFont(13.5, fontScale);
-  const sectionLabelLine = scaleFont(18, fontScale);
+  const sectionLabelLine = scaleFont(compact ? 17 : 18, fontScale);
   const leadFontSize = scaleFont(15, fontScale);
-  const leadLineHeight = scaleFont(22, fontScale);
+  const leadLineHeight = scaleFont(compact ? 20.5 : 22, fontScale);
   const bulletFontSize = scaleFont(14.5, fontScale);
-  const bulletLineHeight = scaleFont(21, fontScale);
+  const bulletLineHeight = scaleFont(compact ? 19.5 : 21, fontScale);
 
   const leadText = (points[0] ?? article.ai_summary ?? '').trim();
   const keyPoints = points.slice(1);
@@ -132,7 +134,7 @@ function ArticleSummaryPoints({
           lineHeight: sectionLabelLine,
           fontWeight: '700',
           color: '#1C1917',
-          marginBottom: Math.round(4 * fontScale),
+          marginBottom: Math.round((compact ? 3 : 4) * fontScale),
         }}
       >
         What happened
@@ -149,7 +151,11 @@ function ArticleSummaryPoints({
       </Text>
 
       {keyPoints.length > 0 ? (
-        <View style={{ marginTop: Math.round(13 * fontScale) }}>
+        <View
+          style={{
+            marginTop: Math.round((compact ? 9 : 13) * fontScale),
+          }}
+        >
           <Text
             style={{
               ...sansStyle,
@@ -157,12 +163,12 @@ function ArticleSummaryPoints({
               lineHeight: sectionLabelLine,
               fontWeight: '700',
               color: '#1C1917',
-              marginBottom: Math.round(6 * fontScale),
+              marginBottom: Math.round((compact ? 4 : 6) * fontScale),
             }}
           >
             Key developments
           </Text>
-          <View style={{ gap: Math.round(6 * fontScale) }}>
+          <View style={{ gap: Math.round((compact ? 4.5 : 6) * fontScale) }}>
             {keyPoints.map((point, ptIdx) => (
               <View
                 key={ptIdx}
@@ -208,6 +214,7 @@ function ArticleSummaryPoints({
 function EditorialCardContent({
   article,
   fontScale,
+  compact = false,
   activeTopic,
   activePositionLabel,
   onSelectTopic,
@@ -217,6 +224,7 @@ function EditorialCardContent({
 }: {
   article: Article;
   fontScale: number;
+  compact?: boolean;
   activeTopic?: string | null;
   activePositionLabel?: string;
   onSelectTopic?: (topic: string) => void;
@@ -236,13 +244,17 @@ function EditorialCardContent({
     .join(' · ');
   const kickerFontSize = scaleFont(11, fontScale);
   const summaryNode = (
-    <ArticleSummaryPoints article={article} fontScale={fontScale} />
+    <ArticleSummaryPoints
+      article={article}
+      fontScale={fontScale}
+      compact={compact}
+    />
   );
 
   return (
     <View
       style={{
-        flex: 1,
+        flexGrow: 1,
         justifyContent: 'space-between',
       }}
     >
@@ -255,7 +267,7 @@ function EditorialCardContent({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 8,
-              marginBottom: Math.round(7 * fontScale),
+              marginBottom: Math.round((compact ? 5 : 7) * fontScale),
             }}
           >
             <Text
@@ -305,7 +317,7 @@ function EditorialCardContent({
               flexDirection: 'row',
               flexWrap: 'wrap',
               alignItems: 'center',
-              marginBottom: Math.round(7 * fontScale),
+              marginBottom: Math.round((compact ? 5 : 7) * fontScale),
             }}
           >
             {cardTags.map((tag, tagIdx) => {
@@ -370,8 +382,8 @@ function EditorialCardContent({
           className="text-ink tracking-[-0.35px]"
           style={{
             ...getNewsFontStyle('700'),
-            fontSize: scaleFont(21, fontScale),
-            lineHeight: scaleFont(27, fontScale),
+            fontSize: scaleFont(compact ? 19.5 : 21, fontScale),
+            lineHeight: scaleFont(compact ? 25 : 27, fontScale),
           }}
         >
           {article.ai_headline}
@@ -386,15 +398,15 @@ function EditorialCardContent({
               fontWeight: '500',
               letterSpacing: 0.6,
               color: '#A8A29E',
-              marginTop: Math.round(7 * fontScale),
-              marginBottom: Math.round(18 * fontScale),
+              marginTop: Math.round((compact ? 5 : 7) * fontScale),
+              marginBottom: Math.round((compact ? 11 : 16) * fontScale),
             }}
             numberOfLines={1}
           >
             {metaLine}
           </Text>
         ) : (
-          <View style={{ height: Math.round(14 * fontScale) }} />
+          <View style={{ height: Math.round((compact ? 10 : 14) * fontScale) }} />
         )}
 
         {/* Two-part scannable summary */}
@@ -404,7 +416,7 @@ function EditorialCardContent({
       {/* Bottom card utility: Why it matters */}
       <View
         style={{
-          marginTop: Math.round(14 * fontScale),
+          marginTop: Math.round((compact ? 10 : 14) * fontScale),
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'flex-start',
@@ -472,11 +484,13 @@ function EditionCoverContent({
   article,
   editionMeta,
   fontScale,
+  compact = false,
   onStart,
 }: {
   article: Article;
   editionMeta: EditionCoverMeta;
   fontScale: number;
+  compact?: boolean;
   onStart?: () => void;
 }) {
   const sansStyle = Fonts?.sans
@@ -497,9 +511,9 @@ function EditionCoverContent({
         position: 'relative',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 26,
-        paddingTop: 58,
-        paddingBottom: 38,
+        paddingHorizontal: compact ? 22 : 26,
+        paddingTop: compact ? 44 : 58,
+        paddingBottom: compact ? 28 : 38,
       }}
     >
       <CoverPatternArt />
@@ -967,9 +981,15 @@ function ArticleDeckCard({
   totalArticles,
   isActive,
   isFlipped,
+  compact,
   activeIdxSV,
   flipProgress,
   isFlippedSV,
+  activeScrollOffsetSV,
+  activeMaxScrollSV,
+  touchStartedInScrollSV,
+  activeFrontScrollGesture,
+  activeBackScrollGesture,
   editionMeta,
   showImages,
   baseImageTier,
@@ -999,9 +1019,15 @@ function ArticleDeckCard({
   totalArticles: number;
   isActive: boolean;
   isFlipped: boolean;
+  compact: boolean;
   activeIdxSV: SharedValue<number>;
   flipProgress: SharedValue<number>;
   isFlippedSV: SharedValue<boolean>;
+  activeScrollOffsetSV: SharedValue<number>;
+  activeMaxScrollSV: SharedValue<number>;
+  touchStartedInScrollSV: SharedValue<boolean>;
+  activeFrontScrollGesture: ReturnType<typeof Gesture.Native>;
+  activeBackScrollGesture: ReturnType<typeof Gesture.Native>;
   editionMeta: EditionCoverMeta;
   showImages: boolean;
   baseImageTier: 0 | 1 | 2;
@@ -1035,12 +1061,48 @@ function ArticleDeckCard({
 }) {
   const [overflowTier, setOverflowTier] = useState<0 | 1 | 2>(0);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const areaHeightRef = useRef(0);
-  const contentHeightRef = useRef(0);
+  const [frontMaxScroll, setFrontMaxScroll] = useState(0);
+  const [backMaxScroll, setBackMaxScroll] = useState(0);
+  const [isFrontAtBottom, setIsFrontAtBottom] = useState(true);
+
+  const frontViewportHRef = useRef(0);
+  const frontContentHRef = useRef(0);
+  const frontScrollYRef = useRef(0);
+  const backViewportHRef = useRef(0);
+  const backContentHRef = useRef(0);
+  const backScrollYRef = useRef(0);
 
   const imageTier = Math.max(baseImageTier, overflowTier) as 0 | 1 | 2;
-
   const isCover = article.id === '__ftue_welcome__';
+  const isFrontScrollable = !isCover && frontMaxScroll > 3;
+  const isBackScrollable = !isCover && backMaxScroll > 3;
+
+  useEffect(() => {
+    if (!isActive) return;
+    if (isCover) {
+      activeMaxScrollSV.set(0);
+      activeScrollOffsetSV.set(0);
+      return;
+    }
+    const maxScroll = isFlipped ? backMaxScroll : frontMaxScroll;
+    const offset = isFlipped ? backScrollYRef.current : frontScrollYRef.current;
+    activeMaxScrollSV.set(maxScroll);
+    activeScrollOffsetSV.set(offset);
+  }, [
+    isActive,
+    isCover,
+    isFlipped,
+    frontMaxScroll,
+    backMaxScroll,
+    activeMaxScrollSV,
+    activeScrollOffsetSV,
+  ]);
+
+  const inactiveScrollGesture = useMemo(() => Gesture.Native(), []);
+  const frontScrollGesture =
+    isActive && !isFlipped ? activeFrontScrollGesture : inactiveScrollGesture;
+  const backScrollGesture =
+    isActive && isFlipped ? activeBackScrollGesture : inactiveScrollGesture;
 
   const flipTapGesture = useMemo(
     () =>
@@ -1097,38 +1159,106 @@ function ArticleDeckCard({
     };
   });
 
-  const handleBodyAreaLayout = useCallback((layoutHeight: number) => {
-    areaHeightRef.current = layoutHeight - 40;
-    if (
-      areaHeightRef.current > 0 &&
-      contentHeightRef.current > areaHeightRef.current + 2
-    ) {
+  const recomputeFrontMetrics = useCallback(() => {
+    const viewportH = frontViewportHRef.current;
+    const contentH = frontContentHRef.current;
+    if (viewportH <= 0 || contentH <= 0) return;
+
+    const overflow = contentH - viewportH;
+    if (overflow > 2) {
       setOverflowTier((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2));
     }
+    const nextMax = Math.max(0, overflow);
+    setFrontMaxScroll(nextMax);
+    setIsFrontAtBottom(nextMax <= 3 || frontScrollYRef.current >= nextMax - 4);
   }, []);
 
-  const handleBodyContentLayout = useCallback((layoutHeight: number) => {
-    contentHeightRef.current = layoutHeight;
-    if (
-      areaHeightRef.current > 0 &&
-      contentHeightRef.current > areaHeightRef.current + 2
-    ) {
-      setOverflowTier((prev) => (prev < 2 ? ((prev + 1) as 0 | 1 | 2) : 2));
-    }
+  const handleFrontScrollViewportLayout = useCallback(
+    (layoutHeight: number) => {
+      frontViewportHRef.current = layoutHeight;
+      recomputeFrontMetrics();
+    },
+    [recomputeFrontMetrics]
+  );
+
+  const handleFrontScrollContentSize = useCallback(
+    (contentHeight: number) => {
+      frontContentHRef.current = contentHeight;
+      recomputeFrontMetrics();
+    },
+    [recomputeFrontMetrics]
+  );
+
+  const handleFrontScroll = useCallback(
+    (offsetY: number) => {
+      frontScrollYRef.current = offsetY;
+      if (isActive && !isFlipped) {
+        activeScrollOffsetSV.set(offsetY);
+      }
+      setIsFrontAtBottom(
+        frontMaxScroll <= 3 || offsetY >= frontMaxScroll - 4
+      );
+    },
+    [activeScrollOffsetSV, frontMaxScroll, isActive, isFlipped]
+  );
+
+  const recomputeBackMetrics = useCallback(() => {
+    const viewportH = backViewportHRef.current;
+    const contentH = backContentHRef.current;
+    if (viewportH <= 0 || contentH <= 0) return;
+    setBackMaxScroll(Math.max(0, contentH - viewportH));
   }, []);
+
+  const handleBackScrollViewportLayout = useCallback(
+    (layoutHeight: number) => {
+      backViewportHRef.current = layoutHeight;
+      recomputeBackMetrics();
+    },
+    [recomputeBackMetrics]
+  );
+
+  const handleBackScrollContentSize = useCallback(
+    (contentHeight: number) => {
+      backContentHRef.current = contentHeight;
+      recomputeBackMetrics();
+    },
+    [recomputeBackMetrics]
+  );
+
+  const handleBackScroll = useCallback(
+    (offsetY: number) => {
+      backScrollYRef.current = offsetY;
+      if (isActive && isFlipped) {
+        activeScrollOffsetSV.set(offsetY);
+      }
+    },
+    [activeScrollOffsetSV, isActive, isFlipped]
+  );
 
   const showingPhoto = Boolean(showImages && article.image_url && !imageLoadFailed);
   const bannerHeight = showingPhoto
-    ? imageTier === 0
-      ? 175
-      : imageTier === 1
-        ? 88
-        : 44
-    : imageTier === 0
-      ? 104
-      : imageTier === 1
+    ? compact
+      ? imageTier === 0
+        ? 132
+        : imageTier === 1
+          ? 72
+          : 38
+      : imageTier === 0
+        ? 175
+        : imageTier === 1
+          ? 88
+          : 44
+    : compact
+      ? imageTier === 0
         ? 74
-        : 44;
+        : imageTier === 1
+          ? 52
+          : 34
+      : imageTier === 0
+        ? 92
+        : imageTier === 1
+          ? 64
+          : 40;
 
   const isLiked = currentVote === 'like';
   const isDisliked = currentVote === 'dislike';
@@ -1138,11 +1268,15 @@ function ArticleDeckCard({
       article={article}
       editionMeta={editionMeta}
       fontScale={fontScale}
+      compact={compact}
       onStart={onStartEdition}
     />
   ) : (
     <>
       <View
+        onTouchStart={() => {
+          touchStartedInScrollSV.set(false);
+        }}
         style={{
           position: 'relative',
           width: '100%',
@@ -1172,44 +1306,111 @@ function ArticleDeckCard({
         </GestureDetector>
       </View>
 
-      <GestureDetector gesture={flipTapGesture}>
-        <View
-          onLayout={(e) => handleBodyAreaLayout(e.nativeEvent.layout.height)}
-          style={{
-            flex: 1,
-            padding: 20,
-            overflow: 'hidden',
-          }}
-        >
-          <View
+      <View style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <GestureDetector gesture={frontScrollGesture}>
+          <ScrollView
+            style={{
+              flex: 1,
+              ...(Platform.OS === 'web'
+                ? ({
+                    touchAction:
+                      isActive && isFrontScrollable ? 'pan-y' : 'none',
+                  } as Record<string, unknown>)
+                : {}),
+            }}
+            scrollEnabled={isActive && isFrontScrollable}
+            bounces={false}
+            overScrollMode="never"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            scrollEventThrottle={16}
+            onTouchStart={() => {
+              touchStartedInScrollSV.set(true);
+            }}
             onLayout={(e) =>
-              handleBodyContentLayout(e.nativeEvent.layout.height)
+              handleFrontScrollViewportLayout(e.nativeEvent.layout.height)
             }
-            style={{ flex: 1 }}
+            onContentSizeChange={(_w, contentH) =>
+              handleFrontScrollContentSize(contentH)
+            }
+            onScroll={(e) =>
+              handleFrontScroll(e.nativeEvent.contentOffset.y)
+            }
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingHorizontal: compact ? 18 : 20,
+              paddingTop: compact ? 12 : 16,
+              paddingBottom: compact ? 12 : 14,
+            }}
           >
-            <EditorialCardContent
-              article={article}
-              fontScale={fontScale}
-              activeTopic={activeTopic}
-              activePositionLabel={
-                activeTopic
-                  ? `${Math.min(cardIndex + 1, totalArticles)} of ${totalArticles}`
-                  : undefined
-              }
-              onSelectTopic={onSelectTopic}
-              onClearTopic={onClearTopic}
-              onPressWhyItMatters={toggleFlip}
-            />
+            <GestureDetector gesture={flipTapGesture}>
+              <View style={{ flexGrow: 1 }}>
+                <EditorialCardContent
+                  article={article}
+                  fontScale={fontScale}
+                  compact={compact}
+                  activeTopic={activeTopic}
+                  activePositionLabel={
+                    activeTopic
+                      ? `${Math.min(cardIndex + 1, totalArticles)} of ${totalArticles}`
+                      : undefined
+                  }
+                  onSelectTopic={onSelectTopic}
+                  onClearTopic={onClearTopic}
+                  onPressWhyItMatters={toggleFlip}
+                />
+              </View>
+            </GestureDetector>
+          </ScrollView>
+        </GestureDetector>
+
+        {isActive && isFrontScrollable && !isFrontAtBottom ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              bottom: 6,
+              left: 0,
+              right: 0,
+              alignItems: 'center',
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+                borderRadius: 999,
+                backgroundColor: 'rgba(255, 255, 255, 0.92)',
+                borderWidth: 1,
+                borderColor: 'rgba(28, 25, 23, 0.08)',
+              }}
+            >
+              <Text
+                style={{
+                  ...(Fonts?.sans
+                    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
+                    : {}),
+                  fontSize: scaleFont(10.5, fontScale),
+                  fontWeight: '600',
+                  color: '#78716C',
+                }}
+              >
+                Scroll ↓
+              </Text>
+            </View>
           </View>
-        </View>
-      </GestureDetector>
+        ) : null}
+      </View>
 
       {/* Quieter Card Front Footer: Dislike (left) + Save for later / Like (right) */}
       <View
+        onTouchStart={() => {
+          touchStartedInScrollSV.set(false);
+        }}
         style={{
-          paddingHorizontal: 22,
-          paddingBottom: 14,
-          paddingTop: 10,
+          paddingHorizontal: compact ? 20 : 22,
+          paddingBottom: compact ? 11 : 14,
+          paddingTop: compact ? 8 : 10,
           borderTopWidth: 1,
           borderTopColor: 'rgba(28, 25, 23, 0.05)',
           flexDirection: 'row',
@@ -1462,6 +1663,9 @@ function ArticleDeckCard({
         >
           <View style={{ flex: 1, minHeight: 0 }}>
             <View
+              onTouchStart={() => {
+                touchStartedInScrollSV.set(false);
+              }}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -1474,20 +1678,46 @@ function ArticleDeckCard({
               </Pressable>
             </View>
 
-            <ScrollView
-              style={{ flex: 1 }}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{
-                flexGrow: 1,
-                paddingHorizontal: 20,
-                paddingTop: 20,
-                paddingBottom: 16,
-              }}
-            >
-              <Pressable
-                onPress={toggleFlip}
-                style={{ flex: 1, justifyContent: 'space-between' }}
+            <GestureDetector gesture={backScrollGesture}>
+              <ScrollView
+                style={{
+                  flex: 1,
+                  ...(Platform.OS === 'web'
+                    ? ({
+                        touchAction:
+                          isActive && isBackScrollable ? 'pan-y' : 'none',
+                      } as Record<string, unknown>)
+                    : {}),
+                }}
+                scrollEnabled={isActive && isBackScrollable}
+                bounces={false}
+                overScrollMode="never"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+                scrollEventThrottle={16}
+                onTouchStart={() => {
+                  touchStartedInScrollSV.set(true);
+                }}
+                onLayout={(e) =>
+                  handleBackScrollViewportLayout(e.nativeEvent.layout.height)
+                }
+                onContentSizeChange={(_w, contentH) =>
+                  handleBackScrollContentSize(contentH)
+                }
+                onScroll={(e) =>
+                  handleBackScroll(e.nativeEvent.contentOffset.y)
+                }
+                contentContainerStyle={{
+                  flexGrow: 1,
+                  paddingHorizontal: compact ? 18 : 20,
+                  paddingTop: compact ? 14 : 20,
+                  paddingBottom: compact ? 12 : 16,
+                }}
               >
+                <Pressable
+                  onPress={toggleFlip}
+                  style={{ flexGrow: 1, justifyContent: 'space-between' }}
+                >
                 <View>
                   <View className="flex-row items-center gap-2 mb-2 min-w-0">
                     <Text
@@ -1610,14 +1840,18 @@ function ArticleDeckCard({
                   ) : null}
                 </View>
               </Pressable>
-            </ScrollView>
+              </ScrollView>
+            </GestureDetector>
           </View>
 
           <View
+            onTouchStart={() => {
+              touchStartedInScrollSV.set(false);
+            }}
             style={{
-              paddingHorizontal: 20,
-              paddingTop: 12,
-              paddingBottom: 16,
+              paddingHorizontal: compact ? 18 : 20,
+              paddingTop: compact ? 10 : 12,
+              paddingBottom: compact ? 12 : 16,
               borderTopWidth: 1,
               borderTopColor: 'rgba(28, 25, 23, 0.07)',
               backgroundColor: '#F4F1EA',
@@ -1791,6 +2025,10 @@ export function SwipeCardDeck({
     };
   }, []);
   const { width, height } = useWindowDimensions();
+  const [cardAreaHeight, setCardAreaHeight] = useState(() =>
+    Math.round(height * 0.72)
+  );
+  const isCompactHeight = cardAreaHeight < 560;
 
   const activeIdxSV = useSharedValue(0);
   const articlesLenSV = useSharedValue(articles.length);
@@ -1804,6 +2042,12 @@ export function SwipeCardDeck({
   const flipProgress = useSharedValue(0);
   const isFlippedSV = useSharedValue(false);
   const isAnimating = useSharedValue(false);
+  const activeScrollOffsetSV = useSharedValue(0);
+  const activeMaxScrollSV = useSharedValue(0);
+  const touchStartedInScrollSV = useSharedValue(false);
+  const dragModeSV = useSharedValue<0 | 1 | 2>(0);
+  const activeFrontScrollGesture = useMemo(() => Gesture.Native(), []);
+  const activeBackScrollGesture = useMemo(() => Gesture.Native(), []);
 
   useEffect(() => {
     windowHeightSV.value = height;
@@ -2194,17 +2438,46 @@ export function SwipeCardDeck({
   ]);
 
   // Unified deck pan gesture: Left, Right, and Up advance forward; Down pulls previous card from above.
-  // `activeIdxSV` and transforms update atomically in the UI worklet callback so cards never blink or snap back.
+  // When a story overflows, vertical drags inside the body scroll cleanly until reaching the top/bottom boundary.
   const deckPanGesture = Gesture.Pan()
-    .minDistance(10)
+    .simultaneousWithExternalGesture(
+      activeFrontScrollGesture,
+      activeBackScrollGesture
+    )
+    .minDistance(8)
     .onStart(() => {
       if (isAnimating.value) return;
       isPullingPrev.value = false;
+      dragModeSV.value = 0;
     })
     .onUpdate((event) => {
       if (isAnimating.value) return;
       const activeIdx = activeIdxSV.value;
       const isCaughtUpCard = activeIdx >= articlesLenSV.value;
+
+      if (dragModeSV.value === 0) {
+        const absX = Math.abs(event.translationX);
+        const absY = Math.abs(event.translationY);
+        if (absX < 8 && absY < 8) return;
+
+        const canScrollActive =
+          !isCaughtUpCard &&
+          activeMaxScrollSV.value > 3 &&
+          touchStartedInScrollSV.value;
+
+        if (!canScrollActive || absX >= absY) {
+          dragModeSV.value = 1;
+        } else if (event.translationY < 0) {
+          dragModeSV.value =
+            activeScrollOffsetSV.value >= activeMaxScrollSV.value - 3 ? 1 : 2;
+        } else {
+          dragModeSV.value = activeScrollOffsetSV.value <= 3 ? 1 : 2;
+        }
+      }
+
+      if (dragModeSV.value === 2) {
+        return;
+      }
 
       const isDownwardPull =
         activeIdx > 0 &&
@@ -2256,6 +2529,14 @@ export function SwipeCardDeck({
         : event.translationY;
     })
     .onEnd((event) => {
+      if (dragModeSV.value === 2) {
+        dragModeSV.value = 0;
+        touchStartedInScrollSV.value = false;
+        return;
+      }
+      dragModeSV.value = 0;
+      touchStartedInScrollSV.value = false;
+
       if (isAnimating.value) return;
       const activeIdx = activeIdxSV.value;
       const isCaughtUpCard = activeIdx >= articlesLenSV.value;
@@ -2407,6 +2688,8 @@ export function SwipeCardDeck({
       }
     })
     .onFinalize((_, success) => {
+      dragModeSV.value = 0;
+      touchStartedInScrollSV.value = false;
       if (!success && !isAnimating.value) {
         if (isPullingPrev.value) {
           isPullingPrev.value = false;
@@ -2436,6 +2719,10 @@ export function SwipeCardDeck({
   const handleCardContainerLayout = useCallback(
     (layoutHeight: number) => {
       if (layoutHeight <= 0) return;
+      const rounded = Math.round(layoutHeight);
+      setCardAreaHeight((prev) =>
+        Math.abs(rounded - prev) > 8 ? rounded : prev
+      );
       const oldOffscreen = -(cardHeightSV.value + 120);
       const nextOffscreen = -Math.max(layoutHeight + 120, height + 200);
       cardHeightSV.value = layoutHeight;
@@ -2479,8 +2766,8 @@ export function SwipeCardDeck({
         flex: 1,
         paddingLeft: 20,
         paddingRight: 20,
-        paddingTop: 22,
-        paddingBottom: 20,
+        paddingTop: isCompactHeight ? 12 : 22,
+        paddingBottom: isCompactHeight ? 12 : 20,
         alignItems: 'center',
       }}
     >
@@ -2549,9 +2836,15 @@ export function SwipeCardDeck({
                   totalArticles={articles.length}
                   isActive={isActiveCard}
                   isFlipped={isActiveCard ? isFlipped : false}
+                  compact={isCompactHeight}
                   activeIdxSV={activeIdxSV}
                   flipProgress={flipProgress}
                   isFlippedSV={isFlippedSV}
+                  activeScrollOffsetSV={activeScrollOffsetSV}
+                  activeMaxScrollSV={activeMaxScrollSV}
+                  touchStartedInScrollSV={touchStartedInScrollSV}
+                  activeFrontScrollGesture={activeFrontScrollGesture}
+                  activeBackScrollGesture={activeBackScrollGesture}
                   editionMeta={editionMeta}
                   showImages={showImages}
                   baseImageTier={baseImageTier}

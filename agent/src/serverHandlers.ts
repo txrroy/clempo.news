@@ -5,6 +5,7 @@ import {
   extractFullArticle,
   fetchRssCandidatesWithStats,
   isSameTitle,
+  searchOtherOutletsForStory,
   selectTopImpactStoriesWithLog,
 } from './agents/fetcher';
 import { judgeArticle } from './agents/judge';
@@ -137,19 +138,47 @@ export async function handleRegenerate(
   req: HttpRequest,
   res: HttpResponse
 ): Promise<void> {
+  const body = (req.body || {}) as {
+    articleId?: string;
+    readingLevel?: ReadingLevel;
+    targetSummaryWords?: number;
+    redirectInstructions?: string;
+    tryAlternateSource?: boolean;
+    addOtherSide?: boolean;
+    stream?: boolean;
+  };
+  const wantsStream = Boolean(body.stream);
+
+  const emitProgress = (
+    agent: string,
+    message: string,
+    status: 'running' | 'done' | 'warn' = 'running'
+  ) => {
+    if (!wantsStream) return;
+    res.write?.(
+      `data: ${JSON.stringify({
+        type: 'progress',
+        agent,
+        message,
+        status,
+        at: new Date().toISOString(),
+      })}\n\n`
+    );
+  };
+
   try {
     await verifyEditorAuth(req);
-    const body = (req.body || {}) as {
-      articleId?: string;
-      readingLevel?: ReadingLevel;
-      targetSummaryWords?: number;
-      redirectInstructions?: string;
-      tryAlternateSource?: boolean;
-    };
 
     if (!body.articleId) {
       res.status(400).json({ error: 'articleId is required' });
       return;
+    }
+
+    if (wantsStream) {
+      res.setHeader?.('Content-Type', 'text/event-stream');
+      res.setHeader?.('Cache-Control', 'no-cache');
+      res.setHeader?.('Connection', 'keep-alive');
+      res.flushHeaders?.();
     }
 
     const db = initFirebaseAdmin();
@@ -177,22 +206,118 @@ export async function handleRegenerate(
       },
     };
 
+    if (body.tryAlternateSource) {
+      emitProgress('Agent 1 · Extractor', 'Fetching alternate source URL...');
+    }
+
     const fetched = await buildFetchedFromDoc(
       articleDoc,
       Boolean(body.tryAlternateSource)
     );
+
+    if (body.tryAlternateSource) {
+      emitProgress(
+        'Agent 1 · Extractor',
+        fetched.usedFallbackSnippet
+          ? 'Alternate scrape blocked — using fallback snippet.'
+          : `Extracted full text from ${fetched.link}`,
+        fetched.usedFallbackSnippet ? 'warn' : 'done'
+      );
+    }
+
+    let addedSources: { name: string; url: string }[] = [];
+    let effectiveRedirect = body.redirectInstructions;
+
+    if (body.addOtherSide) {
+      emitProgress(
+        'Agent 1 · Source Search',
+        'Searching other outlets for opposing or additional perspectives...'
+      );
+      const rssSources = await loadRssSources(db);
+      const externalOutlets = await searchOtherOutletsForStory({
+        headline: articleDoc.ai_headline,
+        originalUrl: articleDoc.original_url,
+        alternateUrls: articleDoc.alternate_urls || [],
+        existingSourceNames: articleDoc.source_names || [],
+        sources: rssSources,
+        maxOutlets: 2,
+        onProgress: (msg) => emitProgress('Agent 1 · Source Search', msg),
+      });
+
+      if (externalOutlets.length > 0) {
+        addedSources = externalOutlets.map((o) => ({ name: o.name, url: o.url }));
+        const extraSections = externalOutlets
+          .map(
+            (o) =>
+              `\n\n--- Additional Outlet: ${o.name} (${o.url}) ---\n${o.text}`
+          )
+          .join('');
+        fetched.fullText = `${fetched.fullText}${extraSections}`.slice(
+          0,
+          14000
+        );
+
+        const mergedNames = Array.from(
+          new Set([
+            ...(fetched.source_names || []),
+            ...externalOutlets.map((o) => o.name),
+          ])
+        );
+        const mergedUrls = Array.from(
+          new Set([
+            ...(fetched.alternate_urls || []),
+            ...externalOutlets.map((o) => o.url),
+          ])
+        );
+        fetched.source_names = mergedNames;
+        fetched.alternate_urls = mergedUrls;
+        fetched.source_count = mergedNames.length;
+
+        const outletNamesList = externalOutlets.map((o) => o.name).join(', ');
+        emitProgress(
+          'Agent 1 · Source Search',
+          `Retrieved & ready to cite: ${outletNamesList}`,
+          'done'
+        );
+        effectiveRedirect = `${body.redirectInstructions ? `${body.redirectInstructions} ` : ''}Use the additional outlet coverage retrieved (${outletNamesList}) to draft a calm, neutral sentence presenting the opposing or alternate viewpoint, and explicitly cite the outlet name (e.g., "according to ${externalOutlets[0].name}") in that sentence.`;
+      } else {
+        emitProgress(
+          'Agent 1 · Source Search',
+          'No additional external outlets matched — balancing using existing source.',
+          'warn'
+        );
+      }
+    }
+
     const startMs = Date.now();
+    emitProgress(
+      'Agent 2 · Summarizer',
+      `Drafting rewrite (${effectivePolicy.settings.reading_level}, ~${effectivePolicy.settings.target_summary_words}w)...`
+    );
     let regenerated = await summarizeArticle(ai, fetched, {
       policy: effectivePolicy,
-      editorRedirect: body.redirectInstructions,
+      editorRedirect: effectiveRedirect,
     });
 
     if (!regenerated) {
-      res.status(502).json({ error: 'Summarizer failed to regenerate draft' });
+      if (wantsStream) {
+        res.write?.(
+          `data: ${JSON.stringify({ type: 'error', error: 'Summarizer failed to regenerate draft' })}\n\n`
+        );
+        res.end?.();
+      } else {
+        res.status(502).json({ error: 'Summarizer failed to regenerate draft' });
+      }
       return;
     }
 
+    emitProgress('Agent 2 · Summarizer', 'Draft rewrite complete.', 'done');
+
     // Rule 1: Every regenerated draft goes through the Judge again
+    emitProgress(
+      'Agent 3 · Quality Judge',
+      'Verifying claims, neutrality, safety, and readability...'
+    );
     let judgment = await judgeArticle(ai, fetched, regenerated);
 
     // Fix 4: Retry "Too complex" automatically once before a human sees it
@@ -200,29 +325,47 @@ export async function handleRegenerate(
       judgment.flags.includes('TOO_COMPLEX') ||
       judgment.scores.readability < 80
     ) {
+      emitProgress(
+        'Agent 2 · Auto-Simplify',
+        'Readability below target — simplifying wording once...',
+        'warn'
+      );
       const simplified = await summarizeArticle(ai, fetched, {
         policy: effectivePolicy,
-        editorRedirect: `${body.redirectInstructions ? `${body.redirectInstructions}. ` : ''}Simplify the reading level strictly to Grade 6 or below with plain everyday words.`,
+        editorRedirect: `${effectiveRedirect ? `${effectiveRedirect}. ` : ''}Simplify the reading level strictly to Grade 6 or below with plain everyday words.`,
       });
       if (simplified) {
         regenerated = simplified;
+        emitProgress(
+          'Agent 3 · Quality Judge',
+          'Re-auditing simplified draft...'
+        );
         judgment = await judgeArticle(ai, fetched, regenerated);
       }
     }
+    emitProgress(
+      'Agent 3 · Quality Judge',
+      `Verification complete (Accuracy ${judgment.scores.accuracy}, Neutrality ${judgment.scores.neutrality}).`,
+      'done'
+    );
     const durationMs = Date.now() - startMs;
 
     const instructionsSnapshot = buildInstructionsSnapshot(
       effectivePolicy,
-      body.redirectInstructions
+      effectiveRedirect
     );
 
     const traceStep: PipelineTraceStep = {
       step: 'regenerate',
-      agent: 'Agent 2 + Agent 3 · Live Regenerate',
+      agent: body.addOtherSide
+        ? 'Agent 1 + Agent 2 + Agent 3 · Cross-Outlet Balance'
+        : 'Agent 2 + Agent 3 · Live Regenerate',
       at: new Date().toISOString(),
       duration_ms: durationMs,
       status: judgment.pass ? 'ok' : 'warning',
-      summary: `Regenerated (${effectivePolicy.settings.reading_level}, ~${effectivePolicy.settings.target_summary_words}w) and re-audited by Judge.`,
+      summary: body.addOtherSide && addedSources.length > 0
+        ? `Searched & cited ${addedSources.map((s) => s.name).join(', ')}; re-audited by Judge.`
+        : `Regenerated (${effectivePolicy.settings.reading_level}, ~${effectivePolicy.settings.target_summary_words}w) and re-audited by Judge.`,
       details: {
         reading_level: effectivePolicy.settings.reading_level,
         target_summary_words: effectivePolicy.settings.target_summary_words,
@@ -232,7 +375,7 @@ export async function handleRegenerate(
       },
     };
 
-    res.status(200).json({
+    const payload = {
       before: {
         ai_headline: articleDoc.ai_headline,
         ai_summary: articleDoc.ai_summary,
@@ -256,12 +399,32 @@ export async function handleRegenerate(
         scores: judgment.scores,
         flags: judgment.flags,
         claims: judgment.claims,
+        ...(addedSources.length > 0
+          ? {
+              addedSources,
+              source_text: fetched.fullText,
+              source_names: fetched.source_names,
+              alternate_urls: fetched.alternate_urls,
+            }
+          : {}),
       },
       instructionsSnapshot,
       traceStep,
-    });
+    };
+
+    if (wantsStream) {
+      res.write?.(`data: ${JSON.stringify({ type: 'result', data: payload })}\n\n`);
+      res.end?.();
+    } else {
+      res.status(200).json(payload);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Regeneration failed';
+    if (wantsStream) {
+      res.write?.(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
+      res.end?.();
+      return;
+    }
     const status = message.includes('Unauthorized') || message.includes('token') ? 401 : 500;
     res.status(status).json({ error: message });
   }
