@@ -1,81 +1,38 @@
-import { Image } from 'expo-image';
-import { AdminLoginScreen } from '@/components/admin/AdminLoginScreen';
-import { AnalyticsPane } from '@/components/admin/AnalyticsPane';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { AdminLoginV3 } from '@/components/admin-v3/AdminLoginV3';
+import { NewsCollectorDrawerV3 } from '@/components/admin-v3/NewsCollectorDrawerV3';
 import {
-  ArticleInboxList,
-  INITIAL_FILTERS,
-  applyArticleFilters,
-  type ArticleFilterState,
-} from '@/components/admin/ArticleInboxList';
+  V3Button,
+  V3Text,
+  V3UserAvatar,
+} from '@/components/admin-v3/primitives';
 import {
-  ArticleReaderDrawer,
-  ArticleReaderPane,
-} from '@/components/admin/ArticleReaderDrawer';
-import { VerticalSplitPane } from '@/components/admin/BottomDrawer';
-import { DesignSystemPane } from '@/components/admin/DesignSystemPane';
-import {
-  EditorOverviewPane,
-  HowItWorksPane,
-} from '@/components/admin/EditorOverviewPane';
-import {
-  InboxSidebar,
-  formatEditionDate,
-  type InboxFolder,
-  type OlderDateEntry,
-} from '@/components/admin/InboxSidebar';
-import { LivePipelineDrawer } from '@/components/admin/LivePipelineDrawer';
-import { PolicyGovernancePane } from '@/components/admin/PolicyGovernancePane';
-import { SourcesPane } from '@/components/admin/SourcesPane';
-import {
-  DSPage,
-  DSSegmentedControl,
-  DSSurface,
-  DSText,
-  DSThemeProvider,
-  useDSTheme,
-} from '@/design-system';
+  SettingsV3,
+  type V3SettingsTab,
+} from '@/components/admin-v3/SettingsV3';
+import { StoryDetailDrawerV3 } from '@/components/admin-v3/StoryDetailDrawerV3';
+import { SystemV3 } from '@/components/admin-v3/SystemV3';
+import { V3_COLORS, V3_SPACE } from '@/components/admin-v3/tokens';
+import { WorkbenchV3 } from '@/components/admin-v3/WorkbenchV3';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
-import { BUILD_INFO } from '@/config/buildInfo';
 import { useAdminArticles } from '@/hooks/useArticles';
 import {
   useAgentPolicy,
   useLatestPipelineRun,
   useSourcesConfig,
 } from '@/hooks/useGovernance';
-import { useCallback, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-type DashboardView =
-  | 'overview'
-  | 'inbox'
-  | 'how-it-works'
-  | 'design-system'
-  | 'settings';
-type SettingsSubTab = 'policy' | 'sources' | 'analytics';
+type V3NavId = 'workbench' | 'system' | 'settings';
 
-const MAIN_TABS: readonly { id: DashboardView; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'inbox', label: 'Approval Inbox' },
-  { id: 'how-it-works', label: 'How it works' },
-  { id: 'design-system', label: 'Design System' },
+const V3_NAV_ITEMS: { id: V3NavId; label: string }[] = [
+  { id: 'workbench', label: 'Workbench' },
+  { id: 'system', label: 'System' },
+  { id: 'settings', label: 'Settings' },
 ];
 
-const SETTINGS_TABS: readonly { id: SettingsSubTab; label: string }[] = [
-  { id: 'policy', label: 'Rules & Policies' },
-  { id: 'sources', label: 'RSS Sources' },
-  { id: 'analytics', label: 'Version Analytics' },
-];
-
-function AdminDashboardContent() {
-  const { theme } = useDSTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const isMailboxDesktop = windowWidth >= 900;
+export default function AdminDashboardScreen() {
   const {
     user,
     loading: authLoading,
@@ -83,7 +40,6 @@ function AdminDashboardContent() {
     isAdmin,
     authError,
     signIn,
-    signUp,
     signInWithGoogle,
     logOut,
     getIdToken,
@@ -95,11 +51,8 @@ function AdminDashboardContent() {
     error: articlesError,
     saveChanges,
     approveArticle,
-    batchApproveArticles,
-    batchRejectArticles,
     rejectArticle,
     unpublishArticle,
-    confirmKidsTopic,
     confirmSourceChecked,
   } = useAdminArticles(isAuthorized);
 
@@ -108,7 +61,6 @@ function AdminDashboardContent() {
     versions,
     savePolicyVersion,
     rollbackToVersion,
-    testPolicy,
   } = useAgentPolicy(isAuthorized);
 
   const {
@@ -121,168 +73,65 @@ function AdminDashboardContent() {
 
   const latestRunLog = useLatestPipelineRun(isAuthorized);
 
-  const [activeView, setActiveView] = useState<DashboardView>('overview');
-  const [settingsTab, setSettingsTab] = useState<SettingsSubTab>('policy');
-  const [livePipelineOpen, setLivePipelineOpen] = useState(false);
-
-  const [selectedFolder, setSelectedFolder] = useState<InboxFolder>({
-    type: 'all-pending',
-  });
-  const [filters, setFilters] = useState<ArticleFilterState>(INITIAL_FILTERS);
+  const [activeNav, setActiveNav] = useState<V3NavId>('workbench');
+  const [settingsTab, setSettingsTab] = useState<V3SettingsTab>('sources');
+  const [collectionTimeUtc, setCollectionTimeUtc] = useState('06:00 UTC');
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(
     null
   );
+  const [collectorOpen, setCollectorOpen] = useState(false);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  const effectiveOverviewDate = useMemo(() => {
+  const effectiveEditionDate = useMemo(() => {
     if (articles.some((a) => a.date === today)) {
       return today;
     }
-    let latest = today;
+    let latest = '';
     for (const a of articles) {
-      if (a.date > latest || latest === today) {
+      if (!latest || a.date > latest) {
         latest = a.date;
       }
     }
-    return latest;
+    return latest || today;
   }, [articles, today]);
 
-  const {
-    allPending,
-    allPublished,
-    todayPublished,
-    todayPending,
-    olderDates,
-  } = useMemo(() => {
-    const allPend = [];
-    const allPub = [];
-    const pub = [];
-    const pend = [];
-    const olderMap = new Map<string, number>();
-
-    for (const article of articles) {
-      // Fix 4: Expire pending stories after 48 hours relative to the latest edition date
-      if (article.status === 'draft') {
-        const refMs = Date.parse(`${effectiveOverviewDate}T23:59:59Z`);
-        const artMs = Date.parse(`${article.date}T12:00:00Z`);
-        const isExpired48h =
-          !Number.isNaN(refMs) &&
-          !Number.isNaN(artMs) &&
-          (refMs - artMs) / (1000 * 60 * 60) > 48;
-        if (!isExpired48h) {
-          allPend.push(article);
-        }
-      } else if (article.status === 'published') {
-        allPub.push(article);
-      }
-
-      if (article.date === effectiveOverviewDate) {
-        if (article.status === 'published') pub.push(article);
-        else if (article.status === 'draft') pend.push(article);
-      } else {
-        olderMap.set(article.date, (olderMap.get(article.date) ?? 0) + 1);
-      }
-    }
-
-    const dates: OlderDateEntry[] = Array.from(olderMap.entries())
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([date, count]) => ({ date, count }));
-
-    return {
-      allPending: allPend,
-      allPublished: allPub,
-      todayPublished: pub,
-      todayPending: pend,
-      olderDates: dates,
-    };
-  }, [articles, effectiveOverviewDate]);
-
-  const folderArticles = useMemo(() => {
-    if (selectedFolder.type === 'all-pending') return allPending;
-    if (selectedFolder.type === 'all-published') return allPublished;
-    if (selectedFolder.type === 'today-published') return todayPublished;
-    if (selectedFolder.type === 'today-pending') return todayPending;
-    return articles.filter((a) => a.date === selectedFolder.date);
-  }, [
-    articles,
-    selectedFolder,
-    allPending,
-    allPublished,
-    todayPublished,
-    todayPending,
-  ]);
-
-  const filteredArticles = useMemo(
-    () => applyArticleFilters(folderArticles, filters),
-    [folderArticles, filters]
+  const editionArticles = useMemo(
+    () => articles.filter((a) => a.date === effectiveEditionDate),
+    [articles, effectiveEditionDate]
   );
-
-  const folderTitle = useMemo(() => {
-    if (selectedFolder.type === 'all-pending') return 'Approval Inbox · In Review';
-    if (selectedFolder.type === 'all-published') return 'All Published';
-    if (selectedFolder.type === 'today-published') return 'Today · Published';
-    if (selectedFolder.type === 'today-pending') return 'Today · In Review';
-    return formatEditionDate(selectedFolder.date);
-  }, [selectedFolder]);
-
-  const handleSelectFolder = useCallback((folder: InboxFolder) => {
-    setSelectedFolder(folder);
-    setFilters(INITIAL_FILTERS);
-    setSelectedArticleId(null);
-  }, []);
 
   const selectedArticle = useMemo(
     () => articles.find((a) => a.id === selectedArticleId) ?? null,
     [articles, selectedArticleId]
   );
 
-  const selectedIndex = useMemo(
-    () => filteredArticles.findIndex((a) => a.id === selectedArticleId),
-    [filteredArticles, selectedArticleId]
-  );
-
-  const hasPrev = selectedIndex > 0;
-  const hasNext =
-    selectedIndex >= 0 && selectedIndex < filteredArticles.length - 1;
-
-  const handlePrev = useCallback(() => {
-    if (selectedIndex > 0) {
-      setSelectedArticleId(filteredArticles[selectedIndex - 1].id);
-    }
-  }, [filteredArticles, selectedIndex]);
-
-  const handleNext = useCallback(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredArticles.length - 1) {
-      setSelectedArticleId(filteredArticles[selectedIndex + 1].id);
-    }
-  }, [filteredArticles, selectedIndex]);
+  const selectedIdx = selectedArticleId
+    ? editionArticles.findIndex((a) => a.id === selectedArticleId)
+    : -1;
 
   if (authLoading) {
     return (
       <SafeAreaView
         style={{
           flex: 1,
-          backgroundColor: theme.colors.canvas,
-          alignItems: 'center',
+          backgroundColor: V3_COLORS.canvas,
           justifyContent: 'center',
+          alignItems: 'center',
         }}
       >
-        <ActivityIndicator size="large" color={theme.colors.accent} />
+        <V3Text role="mono">LOADING SESSION...</V3Text>
       </SafeAreaView>
     );
   }
 
   if (!user || !isAuthorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.canvas }}>
-        <AdminLoginScreen
+      <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}>
+        <AdminLoginV3
           authError={authError}
-          unauthorizedEmail={
-            user && !isAuthorized ? user.email ?? 'Unknown user' : null
-          }
+          unauthorizedEmail={user && !isAuthorized ? user.email ?? null : null}
           onSignIn={signIn}
-          onSignUp={signUp}
           onGoogleSignIn={signInWithGoogle}
           onSignOut={logOut}
         />
@@ -290,372 +139,201 @@ function AdminDashboardContent() {
     );
   }
 
-  const userEmail = user.email ?? 'editor';
-  const showDesktopInboxSplit = activeView === 'inbox' && isMailboxDesktop;
-
-  const sharedReaderProps = {
-    adminUid: user.uid,
-    hasPrev,
-    hasNext,
-    getIdToken,
-    onClose: () => setSelectedArticleId(null),
-    closeLabel: 'Close',
-    onSaveChanges: saveChanges,
-    onApprove: approveArticle,
-    onReject: rejectArticle,
-    onUnpublish: unpublishArticle,
-    onConfirmKidsTopic: confirmKidsTopic,
-    onConfirmSourceChecked: confirmSourceChecked,
-  };
-
-  const inboxListNode = (
-    <ArticleInboxList
-      folderTitle={folderTitle}
-      articles={folderArticles}
-      filteredArticles={filteredArticles}
-      filters={filters}
-      showStatusFilter={selectedFolder.type === 'older-date'}
-      selectedArticleId={selectedArticleId}
-      onChangeFilters={setFilters}
-      onSelectArticle={setSelectedArticleId}
-      onBatchApprove={(ids) => batchApproveArticles(ids, user.uid)}
-      onBatchReject={batchRejectArticles}
-      onUnpublish={unpublishArticle}
-    />
-  );
+  const userEmail = user.email ?? '';
+  const enabledSourcesCount = sources.filter((s) => s.enabled).length;
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, minHeight: 0, backgroundColor: theme.colors.canvas }}
-    >
-      {/* Minimalistic Editorial Top Bar */}
+    <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}>
+      {/* Minimal 3-Item Top Nav + Google Photo Avatar */}
       <View
         style={{
-          backgroundColor: theme.colors.canvas,
-          borderBottomWidth: theme.layout.borderWidth,
-          borderBottomColor: theme.colors.borderDefault,
-          paddingHorizontal: theme.spacing.xxl,
-          paddingVertical: theme.spacing.md,
+          backgroundColor: V3_COLORS.surface,
+          borderBottomWidth: 1,
+          borderBottomColor: V3_COLORS.border,
+          paddingHorizontal: V3_SPACE.xxl,
+          paddingVertical: V3_SPACE.md,
         }}
       >
         <View
           style={{
+            maxWidth: 1180,
             width: '100%',
+            alignSelf: 'center',
             flexDirection: 'row',
             flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: theme.spacing.md,
+            gap: V3_SPACE.md,
           }}
         >
-          {/* Left: Brand + Quiet Text Navigation */}
           <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: theme.spacing.xl,
+              gap: V3_SPACE.xl,
               flexWrap: 'wrap',
             }}
           >
-            <Pressable
-              onPress={() => {
-                setActiveView('overview');
-                setSelectedArticleId(null);
-              }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: theme.spacing.sm,
-              }}
-            >
-              <Image
-                source={require('../../../assets/images/snappylit-logo-v3.png')}
-                contentFit="contain"
-                style={{ width: 28, height: 28, borderRadius: theme.radii.sm }}
-              />
-              <DSText variant="footnote" weight="bold" tone="primary">
-                SnappyLit Studio
-              </DSText>
-              <DSText variant="micro" tone="tertiary" tabularNums>
-                {BUILD_INFO.label}
-              </DSText>
-            </Pressable>
+            <V3Text role="headline" weight="700">
+              SnappyLit
+            </V3Text>
 
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: theme.spacing.lg,
+                gap: V3_SPACE.lg,
               }}
             >
-              {(
-                [
-                  ...MAIN_TABS,
-                  { id: 'settings' as const, label: 'Settings' },
-                ] as const
-              ).map((tab) => {
-                const isActive = activeView === tab.id;
+              {V3_NAV_ITEMS.map((item) => {
+                const active = activeNav === item.id;
                 return (
                   <Pressable
-                    key={tab.id}
-                    onPress={() => {
-                      setActiveView(tab.id);
-                      if (tab.id !== 'inbox') setSelectedArticleId(null);
-                    }}
-                    style={({ pressed }) => ({
-                      paddingVertical: theme.spacing.xs,
+                    key={item.id}
+                    onPress={() => setActiveNav(item.id)}
+                    style={{
+                      paddingVertical: V3_SPACE.xs,
                       borderBottomWidth: 2,
-                      borderBottomColor: isActive
-                        ? theme.colors.accent
+                      borderBottomColor: active
+                        ? V3_COLORS.green
                         : 'transparent',
-                      opacity: pressed ? 0.65 : 1,
-                    })}
+                    }}
                   >
-                    <DSText
-                      variant="footnote"
-                      weight={isActive ? 'semibold' : 'medium'}
-                      tone={isActive ? 'primary' : 'tertiary'}
-                    >
-                      {tab.label}
-                    </DSText>
+                    <V3Text role="kicker" tone={active ? 'ink' : 'muted'}>
+                      {item.label}
+                    </V3Text>
                   </Pressable>
                 );
               })}
             </View>
           </View>
 
-          {/* Right: Quiet Contextual Utilities */}
           <View
             style={{
               flexDirection: 'row',
-              flexWrap: 'wrap',
               alignItems: 'center',
-              gap: theme.spacing.md,
+              gap: V3_SPACE.md,
             }}
           >
-            <DSText variant="caption" tone="tertiary">
-              {userEmail.split('@')[0]}
-            </DSText>
-
-            <Pressable
+            <V3UserAvatar
+              photoURL={user.photoURL}
+              fallbackName={user.displayName || userEmail}
+            />
+            <V3Button
+              label="Sign out"
+              variant="outline"
+              size="sm"
               onPress={logOut}
-              style={({ pressed }) => ({
-                paddingVertical: theme.spacing.xs,
-                opacity: pressed ? 0.65 : 1,
-              })}
-            >
-              <DSText variant="caption" weight="medium" tone="secondary">
-                Sign out
-              </DSText>
-            </Pressable>
+            />
           </View>
         </View>
       </View>
 
-      {articlesError ? (
-        <View
-          style={{
-            backgroundColor: theme.colors.tones.danger.bg,
-            borderBottomWidth: theme.layout.borderWidth,
-            borderBottomColor: theme.colors.tones.danger.border,
-            paddingHorizontal: theme.spacing.lg,
-            paddingVertical: theme.spacing.sm,
-          }}
-        >
-          <DSText variant="footnote" tone="danger">
+      <ScrollView
+        style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}
+        contentContainerStyle={{
+          maxWidth: 1180,
+          width: '100%',
+          alignSelf: 'center',
+          paddingHorizontal: V3_SPACE.xxl,
+          paddingVertical: V3_SPACE.xl,
+          paddingBottom: V3_SPACE.xxl * 2,
+        }}
+      >
+        {articlesError ? (
+          <V3Text role="body" tone="red" style={{ marginBottom: V3_SPACE.lg }}>
             {articlesError}
-          </DSText>
-        </View>
-      ) : null}
+          </V3Text>
+        ) : null}
 
-      {articlesLoading ? (
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: theme.colors.canvas,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ActivityIndicator size="large" color={theme.colors.accent} />
-          <DSText
-            variant="footnote"
-            tone="secondary"
-            style={{ marginTop: theme.spacing.md }}
-          >
-            Loading dashboard...
-          </DSText>
-        </View>
-      ) : activeView === 'overview' ? (
-        <EditorOverviewPane
-          articles={articles}
-          today={effectiveOverviewDate}
-          activePolicy={activePolicy}
-          latestRunLog={latestRunLog}
-          enabledSourcesCount={sources.filter((s) => s.enabled).length}
-          onOpenInbox={(folder, articleId, viewFilter) => {
-            if (articleId) {
-              setSelectedArticleId(articleId);
-              return;
+        {articlesLoading ? (
+          <V3Text role="mono">LOADING EDITION...</V3Text>
+        ) : activeNav === 'workbench' ? (
+          <WorkbenchV3
+            articles={articles}
+            today={effectiveEditionDate}
+            activePolicy={activePolicy}
+            latestRunLog={latestRunLog}
+            enabledSourcesCount={enabledSourcesCount}
+            collectionScheduleLabel={collectionTimeUtc}
+            onStartCollecting={() => setCollectorOpen(true)}
+            onViewDetails={(id) => setSelectedArticleId(id)}
+            onApproveArticle={(a) =>
+              approveArticle(a.id, a.ai_headline, a.ai_summary, user.uid)
             }
-            setSelectedFolder(folder);
-            setFilters({
-              ...INITIAL_FILTERS,
-              view: viewFilter ?? 'all',
-            });
-            setSelectedArticleId(null);
-            setActiveView('inbox');
-          }}
-          onOpenLivePipeline={() => setLivePipelineOpen(true)}
-          onOpenSettings={() => {
-            setSettingsTab('policy');
-            setActiveView('settings');
-          }}
-          onSetAutoPublishReady={async (enabled) => {
-            await savePolicyVersion({
-              settings: {
-                ...activePolicy.settings,
-                auto_publish_ready: enabled,
-              },
-              adminInstructions: activePolicy.admin_instructions,
-              changeNote: enabled
-                ? 'Enabled auto-publish for Ready stories from Overview'
-                : 'Paused auto-publish for Ready stories from Overview',
-              userEmail,
-              isAdmin,
-            });
-          }}
-        />
-      ) : activeView === 'inbox' ? (
-        <DSPage
-          title="Approval Inbox"
-          subtitle="Review, edit, and approve drafted stories before publishing."
-          scrollable={false}
-        >
-          <DSSurface
-            variant="surface"
-            radius="md"
-            bordered
-            style={{
-              position: 'relative',
-              flex: 1,
-              minHeight: 0,
-              width: '100%',
-              overflow: 'hidden',
-              ...theme.shadows.card,
+            onRejectArticle={(a) => rejectArticle(a.id)}
+          />
+        ) : activeNav === 'system' ? (
+          <SystemV3
+            activePolicy={activePolicy}
+            sources={sources}
+            articles={articles}
+            isAdmin={isAdmin}
+            userEmail={userEmail}
+            onSaveVersion={savePolicyVersion}
+            onOpenSettingsTab={(tab) => {
+              setSettingsTab(tab);
+              setActiveNav('settings');
             }}
-            className="flex-col md:flex-row"
-          >
-            <InboxSidebar
-              allPendingCount={allPending.length}
-              allPublishedCount={allPublished.length}
-              todayPublishedCount={todayPublished.length}
-              todayPendingCount={todayPending.length}
-              olderDates={olderDates}
-              selectedFolder={selectedFolder}
-              onSelectFolder={handleSelectFolder}
-            />
+          />
+        ) : (
+          <SettingsV3
+            activeTab={settingsTab}
+            onChangeTab={setSettingsTab}
+            activePolicy={activePolicy}
+            versions={versions}
+            isAdmin={isAdmin}
+            userEmail={userEmail}
+            onRollback={rollbackToVersion}
+            sources={sources}
+            onToggleSource={toggleSource}
+            onAddSource={addSource}
+            onRemoveSource={removeSource}
+            onResetDefaults={resetDefaults}
+            collectionTimeUtc={collectionTimeUtc}
+            onChangeCollectionTimeUtc={setCollectionTimeUtc}
+          />
+        )}
+      </ScrollView>
 
-            {isMailboxDesktop ? (
-              <VerticalSplitPane
-                storageKey="snappylit_admin_inbox_split_ratio_v1"
-                topContent={inboxListNode}
-                bottomContent={
-                  selectedArticle ? (
-                    <ArticleReaderPane
-                      key={selectedArticle.id}
-                      article={selectedArticle}
-                      onPrev={handlePrev}
-                      onNext={handleNext}
-                      {...sharedReaderProps}
-                    />
-                  ) : null
-                }
-              />
-            ) : (
-              inboxListNode
-            )}
-          </DSSurface>
-        </DSPage>
-      ) : activeView === 'how-it-works' ? (
-        <HowItWorksPane
-          articles={articles}
-          today={effectiveOverviewDate}
-          activePolicy={activePolicy}
-          onOpenSettings={() => {
-            setSettingsTab('policy');
-            setActiveView('settings');
-          }}
-        />
-      ) : activeView === 'design-system' ? (
-        <DesignSystemPane />
-      ) : (
-        <DSPage
-          title="Settings"
-          subtitle="Manage editorial policy, RSS sources, and prompt analytics."
-          headerRight={
-            <DSSegmentedControl
-              options={SETTINGS_TABS}
-              value={settingsTab}
-              onChange={setSettingsTab}
-            />
-          }
-        >
-          {settingsTab === 'policy' ? (
-            <PolicyGovernancePane
-              activePolicy={activePolicy}
-              versions={versions}
-              isAdmin={isAdmin}
-              userEmail={userEmail}
-              getIdToken={getIdToken}
-              onSaveVersion={savePolicyVersion}
-              onRollback={rollbackToVersion}
-              onTestPolicy={testPolicy}
-            />
-          ) : settingsTab === 'sources' ? (
-            <SourcesPane
-              sources={sources}
-              userEmail={userEmail}
-              onToggleSource={toggleSource}
-              onAddSource={addSource}
-              onRemoveSource={removeSource}
-              onResetDefaults={resetDefaults}
-            />
-          ) : (
-            <AnalyticsPane articles={articles} />
-          )}
-        </DSPage>
-      )}
-
-      {/* Article Reader & Editor Drawer (Overview, other tabs, and mobile Inbox) */}
-      {!showDesktopInboxSplit ? (
-        <ArticleReaderDrawer
-          article={selectedArticle}
-          onPrev={activeView === 'inbox' ? handlePrev : undefined}
-          onNext={activeView === 'inbox' ? handleNext : undefined}
-          {...sharedReaderProps}
-        />
-      ) : null}
-
-      {/* Live Multi-Agent Pipeline Visualizer Drawer */}
-      <LivePipelineDrawer
-        visible={livePipelineOpen}
+      <StoryDetailDrawerV3
+        article={selectedArticle}
+        adminUid={user.uid}
+        hasPrev={selectedIdx > 0}
+        hasNext={
+          selectedIdx >= 0 && selectedIdx < editionArticles.length - 1
+        }
         getIdToken={getIdToken}
-        onClose={() => setLivePipelineOpen(false)}
+        onPrev={() => {
+          if (selectedIdx > 0) {
+            setSelectedArticleId(editionArticles[selectedIdx - 1].id);
+          }
+        }}
+        onNext={() => {
+          if (
+            selectedIdx >= 0 &&
+            selectedIdx < editionArticles.length - 1
+          ) {
+            setSelectedArticleId(editionArticles[selectedIdx + 1].id);
+          }
+        }}
+        onClose={() => setSelectedArticleId(null)}
+        onSaveChanges={saveChanges}
+        onApprove={approveArticle}
+        onReject={rejectArticle}
+        onUnpublish={unpublishArticle}
+        onConfirmSourceChecked={confirmSourceChecked}
+      />
+
+      <NewsCollectorDrawerV3
+        visible={collectorOpen}
+        getIdToken={getIdToken}
+        onClose={() => setCollectorOpen(false)}
         onOpenArticle={(id) => {
-          setSelectedFolder({ type: 'today-pending' });
-          setActiveView('inbox');
+          setCollectorOpen(false);
           setSelectedArticleId(id);
         }}
       />
     </SafeAreaView>
-  );
-}
-
-export default function AdminDashboardScreen() {
-  return (
-    <DSThemeProvider initialTheme="warm-editorial">
-      <AdminDashboardContent />
-    </DSThemeProvider>
   );
 }
