@@ -1,50 +1,51 @@
 import { Platform, type TextStyle } from 'react-native';
 
 export const V3_COLORS = {
-  // High-Contrast Architectural Canvas & Surfaces
-  canvas: '#F5F4EF',
+  // Ocean-Ser Semantic Canvas & Surfaces
+  canvas: '#EFF6E033',
   surface: '#FFFFFF',
-  surfaceWell: '#ECEAE2',
+  surfaceWell: '#EFF6E0',
 
-  // Stark Dark Anchor & Text Hierarchy
-  ink: '#121814',
-  inkMuted: '#4A524D',
-  inkSubtle: '#767E79',
+  // Deep Ocean Ink Hierarchy
+  ink: '#01161E',
+  inkMuted: '#01161ECC',
+  inkSubtle: '#01161E99',
   inkInverse: '#FFFFFF',
 
   // Structural Hairlines & Strong Dividers
-  border: '#C8C4BA',
-  ruleStrong: '#121814',
+  border: '#AEC3B0',
+  ruleStrong: '#01161E',
 
-  // Vibrant Botanical Green (Primary Punch Accent)
-  green: '#1F7A3E',
-  greenVibrant: '#258F49',
-  greenSoft: '#E3F3E8',
+  // Semantic Accent (Deep Teal)
+  accent: '#124559',
+  accentVibrant: '#1A5E78',
+  accentSoft: '#AEC3B0',
 
-  // Vivid Signal Orange (Alert / Missed Run / Attention)
-  orange: '#D9531E',
-  orangeSoft: '#FDECE4',
+  // Semantic Warning (Amber)
+  warning: '#FFBA08',
+  warningInk: '#8A5A00',
+  warningSoft: '#FDECE4',
 
-  // Stark Danger
-  red: '#B91C1C',
-  redSoft: '#FEE2E2',
+  // Semantic Danger (Crimson)
+  danger: '#D00000',
+  dangerSoft: '#FEE2E2',
 
   // Disabled
-  disabledBg: '#DDDAD2',
+  disabledBg: '#DDDDDD',
   disabledInk: '#8A877F',
 } as const;
 
 export const V3_FONTS = {
   sans: Platform.select({
-    web: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    default: 'Inter',
+    web: '"Work Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    default: 'Work Sans',
   }),
   display: Platform.select({
     web: 'Newsreader, Georgia, "Times New Roman", serif',
     default: 'Georgia',
   }),
   mono: Platform.select({
-    web: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    web: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
     default: 'Courier',
   }),
 } as const;
@@ -74,6 +75,7 @@ export const V3_TYPE: Record<
     fontSize: 16,
     fontWeight: '600',
     lineHeight: 22,
+    letterSpacing: 0,
     color: V3_COLORS.ink,
   },
   body: {
@@ -81,14 +83,15 @@ export const V3_TYPE: Record<
     fontSize: 14,
     fontWeight: '400',
     lineHeight: 21,
+    letterSpacing: 0,
     color: V3_COLORS.ink,
   },
   kicker: {
     fontFamily: V3_FONTS.sans,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 14,
-    letterSpacing: 1.1,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: V3_COLORS.inkMuted,
   },
@@ -97,6 +100,7 @@ export const V3_TYPE: Record<
     fontSize: 12,
     fontWeight: '500',
     lineHeight: 16,
+    letterSpacing: 0,
     color: V3_COLORS.inkMuted,
   },
 };
@@ -111,7 +115,7 @@ export const V3_SPACE = {
 } as const;
 
 export const V3_RADII = {
-  // Sharp structural corners vs. pill controls for architectural contrast
+  // Sharp structural cards (0px) vs. 8px rounded controls
   sharp: 0,
-  control: 9999,
+  control: 8,
 } as const;

@@ -137,6 +137,8 @@ export interface RegenerateResponse {
     flags: ArticleFlag[];
     claims: JudgeClaim[];
     addedSources?: { name: string; url: string }[];
+    original_url?: string;
+    used_fallback_snippet?: boolean;
     source_text?: string;
     source_names?: string[];
     alternate_urls?: string[];
@@ -172,6 +174,7 @@ export async function regenerateDraftRequest(params: {
   targetSummaryWords: number;
   redirectInstructions: string;
   tryAlternateSource?: boolean;
+  customSourceUrl?: string;
   addOtherSide?: boolean;
   idToken: string;
   onProgress?: (event: RegenerateProgressEvent) => void;
@@ -189,6 +192,7 @@ export async function regenerateDraftRequest(params: {
       targetSummaryWords: params.targetSummaryWords,
       redirectInstructions: params.redirectInstructions,
       tryAlternateSource: params.tryAlternateSource,
+      customSourceUrl: params.customSourceUrl,
       addOtherSide: params.addOtherSide,
       stream: wantsStream,
     }),
@@ -262,6 +266,12 @@ export async function acceptRegeneratedDraft(
     scores: result.after.scores,
     flags: result.after.flags,
     claims: result.after.claims,
+    ...(result.after.original_url
+      ? { original_url: result.after.original_url }
+      : {}),
+    ...(typeof result.after.used_fallback_snippet === 'boolean'
+      ? { used_fallback_snippet: result.after.used_fallback_snippet }
+      : {}),
     ...(result.after.source_text ? { source_text: result.after.source_text } : {}),
     ...(result.after.source_names
       ? {

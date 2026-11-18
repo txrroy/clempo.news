@@ -52,7 +52,7 @@ export function AdminLoginV3({
           }}
         >
           <View style={{ gap: V3_SPACE.xs }}>
-            <V3Text role="kicker" tone="red">
+            <V3Text role="kicker" tone="danger">
               ACCESS RESTRICTED
             </V3Text>
             <V3Text role="title">Account Not Authorized</V3Text>
@@ -86,7 +86,7 @@ export function AdminLoginV3({
         }}
       >
         <View style={{ gap: V3_SPACE.xs }}>
-          <V3Text role="kicker" tone="green">
+          <V3Text role="kicker" tone="accent">
             EDITORIAL DESK
           </V3Text>
           <V3Text role="title">SnappyLit Studio</V3Text>
@@ -98,7 +98,7 @@ export function AdminLoginV3({
         <V3Rule />
 
         {authError ? (
-          <V3Text role="body" tone="red">
+          <V3Text role="body" tone="danger">
             {authError}
           </V3Text>
         ) : null}

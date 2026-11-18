@@ -17,10 +17,10 @@ const COLOR_TOKENS = [
   { name: 'SURFACE', hex: V3_COLORS.surface },
   { name: 'WELL', hex: V3_COLORS.surfaceWell },
   { name: 'STARK INK', hex: V3_COLORS.ink },
-  { name: 'PUNCH GREEN', hex: V3_COLORS.green },
-  { name: 'SIGNAL ORANGE', hex: V3_COLORS.orange },
+  { name: 'ACCENT', hex: V3_COLORS.accent },
+  { name: 'WARNING', hex: V3_COLORS.warning },
   { name: 'RULE', hex: V3_COLORS.border },
-  { name: 'DANGER', hex: V3_COLORS.red },
+  { name: 'DANGER', hex: V3_COLORS.danger },
 ] as const;
 
 export function DesignSystemV3() {
@@ -40,12 +40,12 @@ export function DesignSystemV3() {
     >
       {/* Masthead anchored with strong structural rule */}
       <View style={{ gap: V3_SPACE.sm }}>
-        <V3Text role="kicker" tone="green">
+        <V3Text role="kicker" tone="accent">
           DESIGN SYSTEM · V3
         </V3Text>
-        <V3Text role="title">Architectural Editorial · High-Contrast Green</V3Text>
+        <V3Text role="title">Ocean-Ser Editorial · Semantic Tokens</V3Text>
         <V3Text role="mono" tone="muted">
-          SHARP STRUCTURAL CARDS (0PX) · PILL CONTROLS (9999PX) · NEVER NESTED · FILL OR BORDER ONLY
+          SHARP STRUCTURAL CARDS (0PX) · 8PX CONTROLS · WORK SANS + NEWSREADER + IBM PLEX MONO
         </V3Text>
       </View>
 
@@ -113,8 +113,8 @@ export function DesignSystemV3() {
             <V3Text role="body">
               Body prose in crisp 14px sans for fast editorial reading.
             </V3Text>
-            <V3Text role="kicker" tone="green">
-              ALL-CAPS TRACKED KICKER (11PX / +1.1 TRACKING)
+            <V3Text role="kicker" tone="accent">
+              ALL-CAPS TRACKED KICKER (11PX / +1.5 TRACKING)
             </V3Text>
             <V3Text role="mono">
               2026-11-16 · UTC 07:24 · SCORE 94 · MONOSPACE META
@@ -136,7 +136,7 @@ export function DesignSystemV3() {
           }}
         >
           <V3Card variant="filled" style={{ flex: 1, minWidth: 260, gap: V3_SPACE.sm }}>
-            <V3Text role="kicker" tone="green">
+            <V3Text role="kicker" tone="accent">
               FILLED VARIANT
             </V3Text>
             <V3Text role="headline">Sharp Background Surface</V3Text>

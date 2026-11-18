@@ -3,6 +3,10 @@ import type { PropsWithChildren } from 'react';
 
 const NEWSREADER_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&display=swap';
+const WORK_SANS_STYLESHEET =
+  'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap';
+const IBM_PLEX_MONO_STYLESHEET =
+  'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap';
 const INTER_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
 
@@ -24,6 +28,8 @@ export default function Root({ children }: PropsWithChildren) {
           crossOrigin="anonymous"
         />
         <link id="newsreader-font" rel="stylesheet" href={NEWSREADER_STYLESHEET} />
+        <link id="work-sans-font" rel="stylesheet" href={WORK_SANS_STYLESHEET} />
+        <link id="ibm-plex-mono-font" rel="stylesheet" href={IBM_PLEX_MONO_STYLESHEET} />
         <link id="inter-font" rel="stylesheet" href={INTER_STYLESHEET} />
         <ScrollViewStyleReset />
         <style>{`html, body { background-color: #141821; }`}</style>

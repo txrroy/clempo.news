@@ -13,7 +13,7 @@ import {
 import { V3_COLORS, V3_RADII, V3_SPACE, V3_TYPE } from './tokens';
 
 type V3TextRole = keyof typeof V3_TYPE;
-type V3TextTone = 'ink' | 'muted' | 'subtle' | 'inverse' | 'green' | 'orange' | 'red';
+type V3TextTone = 'ink' | 'muted' | 'subtle' | 'inverse' | 'accent' | 'warning' | 'danger';
 
 interface V3TextProps extends Omit<TextProps, 'role'> {
   role?: V3TextRole;
@@ -27,9 +27,9 @@ const TONE_MAP: Record<V3TextTone, string> = {
   muted: V3_COLORS.inkMuted,
   subtle: V3_COLORS.inkSubtle,
   inverse: V3_COLORS.inkInverse,
-  green: V3_COLORS.green,
-  orange: V3_COLORS.orange,
-  red: V3_COLORS.red,
+  accent: V3_COLORS.accent,
+  warning: V3_COLORS.warningInk,
+  danger: V3_COLORS.danger,
 };
 
 export function V3Text({
@@ -126,16 +126,16 @@ export function V3Button({
   onPress,
 }: V3ButtonProps) {
   const bgMap: Record<V3ButtonVariant, string> = {
-    primary: V3_COLORS.green,
+    primary: V3_COLORS.accent,
     dark: V3_COLORS.ink,
     outline: 'transparent',
-    danger: V3_COLORS.redSoft,
+    danger: V3_COLORS.dangerSoft,
   };
   const inkMap: Record<V3ButtonVariant, V3TextTone> = {
     primary: 'inverse',
     dark: 'inverse',
     outline: 'ink',
-    danger: 'red',
+    danger: 'danger',
   };
 
   return (
@@ -181,9 +181,9 @@ export function V3Badge({
   tone?: V3BadgeTone;
 }) {
   const map: Record<V3BadgeTone, { bg: string; ink: V3TextTone }> = {
-    approved: { bg: V3_COLORS.greenSoft, ink: 'green' },
-    pending: { bg: V3_COLORS.orangeSoft, ink: 'orange' },
-    rejected: { bg: V3_COLORS.redSoft, ink: 'red' },
+    approved: { bg: V3_COLORS.accentSoft, ink: 'accent' },
+    pending: { bg: V3_COLORS.warningSoft, ink: 'warning' },
+    rejected: { bg: V3_COLORS.dangerSoft, ink: 'danger' },
     neutral: { bg: V3_COLORS.surfaceWell, ink: 'muted' },
   };
 
@@ -217,6 +217,8 @@ export function V3Tabs<T extends string>({
     <View
       style={{
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        maxWidth: '100%',
         alignSelf: 'flex-start',
         backgroundColor: V3_COLORS.surfaceWell,
         padding: V3_SPACE.xs,
@@ -318,12 +320,12 @@ export function V3AccordionItem({
                 width: 24,
                 height: 24,
                 borderRadius: V3_RADII.control,
-                backgroundColor: V3_COLORS.greenSoft,
+                backgroundColor: V3_COLORS.accentSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <V3Text role="mono" weight="700" tone="green">
+              <V3Text role="mono" weight="700" tone="accent">
                 ✓
               </V3Text>
             </View>
@@ -333,12 +335,12 @@ export function V3AccordionItem({
                 width: 24,
                 height: 24,
                 borderRadius: V3_RADII.control,
-                backgroundColor: V3_COLORS.redSoft,
+                backgroundColor: V3_COLORS.dangerSoft,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <V3Text role="mono" weight="700" tone="red">
+              <V3Text role="mono" weight="700" tone="danger">
                 ✕
               </V3Text>
             </View>

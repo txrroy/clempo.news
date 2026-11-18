@@ -294,13 +294,13 @@ export default function ConsumerHomeScreen() {
     [allLoadedWithOlder, savedArticleIds]
   );
 
-  const filteredArticles = useMemo(() => {
-    if (selectedTopic === SAVED_TOPIC_KEY) {
-      return allLoadedWithOlder.filter((article) =>
-        Boolean(savedArticleIds[article.id])
-      );
-    }
+  const savedArticles = useMemo(
+    () =>
+      allLoadedWithOlder.filter((article) => Boolean(savedArticleIds[article.id])),
+    [allLoadedWithOlder, savedArticleIds]
+  );
 
+  const nonSavedFilteredArticles = useMemo(() => {
     if (selectedTopic) {
       const selectedKey = normalizeTopicKey(selectedTopic);
       return allLoadedArticles.filter((article) =>
@@ -334,13 +334,14 @@ export default function ConsumerHomeScreen() {
     return personalizedArticles;
   }, [
     allLoadedArticles,
-    allLoadedWithOlder,
     displayedArticles,
     preferences,
-    savedArticleIds,
     selectedTopic,
     viewMode,
   ]);
+
+  const filteredArticles =
+    selectedTopic === SAVED_TOPIC_KEY ? savedArticles : nonSavedFilteredArticles;
 
   const newspaperArticles = useMemo(
     () => applyTopicPreferences(articles, preferences),
@@ -432,6 +433,7 @@ export default function ConsumerHomeScreen() {
     setViewMode('older');
     setSelectedTopic(null);
     setCurrentIndex(0);
+    setDeckResetToken((prev) => prev + 1);
     await loadOlderArticles();
   };
 
@@ -544,9 +546,10 @@ export default function ConsumerHomeScreen() {
         >
           <Image
             source={{ uri: activeBgImage }}
+            recyclingKey={activeBgImage}
             contentFit="cover"
-            blurRadius={Platform.OS === 'web' ? 0 : 24}
-            transition={350}
+            blurRadius={Platform.OS === 'web' ? 0 : 12}
+            transition={Platform.OS === 'web' ? 250 : 0}
             style={{
               position: 'absolute',
               top: -24,

@@ -86,13 +86,19 @@ function getGeminiClient(): GoogleGenAI {
 
 async function buildFetchedFromDoc(
   doc: ArticleDocument,
-  tryAlternateSource = false
+  tryAlternateSource = false,
+  customSourceUrl?: string
 ): Promise<FetchedArticle> {
   const altUrls = doc.alternate_urls || [];
-  const primaryLink =
-    tryAlternateSource && altUrls.length > 0 ? altUrls[0] : doc.original_url;
-  const remainingAlts =
-    tryAlternateSource && altUrls.length > 0
+  const trimmedCustom = customSourceUrl?.trim();
+  const primaryLink = trimmedCustom
+    ? trimmedCustom
+    : tryAlternateSource && altUrls.length > 0
+      ? altUrls[0]
+      : doc.original_url;
+  const remainingAlts = trimmedCustom
+    ? [doc.original_url, ...altUrls].filter((u) => u && u !== trimmedCustom)
+    : tryAlternateSource && altUrls.length > 0
       ? [...altUrls.slice(1), doc.original_url]
       : altUrls;
 
@@ -110,11 +116,16 @@ async function buildFetchedFromDoc(
     tags: doc.tags && doc.tags.length > 0 ? doc.tags : [doc.topic || 'World', doc.region || 'Global'],
     sensitive: Boolean(doc.sensitive),
     reason: doc.selection_reason || '',
-    fullText: tryAlternateSource ? '' : doc.source_text || '',
+    fullText: trimmedCustom || tryAlternateSource ? '' : doc.source_text || '',
     usedFallbackSnippet: Boolean(doc.used_fallback_snippet),
   };
 
-  if (!tryAlternateSource && base.fullText.trim().length >= 100 && !doc.used_fallback_snippet) {
+  if (
+    !trimmedCustom &&
+    !tryAlternateSource &&
+    base.fullText.trim().length >= 100 &&
+    !doc.used_fallback_snippet
+  ) {
     return base;
   }
 
@@ -144,6 +155,7 @@ export async function handleRegenerate(
     targetSummaryWords?: number;
     redirectInstructions?: string;
     tryAlternateSource?: boolean;
+    customSourceUrl?: string;
     addOtherSide?: boolean;
     stream?: boolean;
   };
@@ -206,20 +218,37 @@ export async function handleRegenerate(
       },
     };
 
-    if (body.tryAlternateSource) {
+    const customSourceUrl = body.customSourceUrl?.trim();
+    if (customSourceUrl) {
+      let parsedUrl: URL | null = null;
+      try {
+        parsedUrl = new URL(customSourceUrl);
+      } catch {
+        parsedUrl = null;
+      }
+      if (!parsedUrl || (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:')) {
+        res.status(400).json({ error: 'Please provide a valid http(s) source URL.' });
+        return;
+      }
+      emitProgress(
+        'Agent 1 · Extractor',
+        `Extracting full article from ${customSourceUrl}...`
+      );
+    } else if (body.tryAlternateSource) {
       emitProgress('Agent 1 · Extractor', 'Fetching alternate source URL...');
     }
 
     const fetched = await buildFetchedFromDoc(
       articleDoc,
-      Boolean(body.tryAlternateSource)
+      Boolean(body.tryAlternateSource),
+      customSourceUrl
     );
 
-    if (body.tryAlternateSource) {
+    if (customSourceUrl || body.tryAlternateSource) {
       emitProgress(
         'Agent 1 · Extractor',
         fetched.usedFallbackSnippet
-          ? 'Alternate scrape blocked — using fallback snippet.'
+          ? 'Could not extract full text from that URL — using fallback snippet.'
           : `Extracted full text from ${fetched.link}`,
         fetched.usedFallbackSnippet ? 'warn' : 'done'
       );
@@ -399,6 +428,14 @@ export async function handleRegenerate(
         scores: judgment.scores,
         flags: judgment.flags,
         claims: judgment.claims,
+        ...(customSourceUrl || body.tryAlternateSource
+          ? {
+              original_url: fetched.link,
+              source_text: fetched.fullText,
+              alternate_urls: fetched.alternate_urls,
+              used_fallback_snippet: fetched.usedFallbackSnippet,
+            }
+          : {}),
         ...(addedSources.length > 0
           ? {
               addedSources,
@@ -685,6 +722,7 @@ export async function handlePipelineStream(
       sendEvent({
         type: 'agent3_start',
         index: idx,
+        headline: summary.ai_headline || article.title,
         message: 'Auditing claims against source text, G-safety & neutrality...',
       });
 
@@ -722,6 +760,7 @@ export async function handlePipelineStream(
         sendEvent({
           type: 'agent3_retry',
           index: idx,
+          headline: summary.ai_headline || article.title,
           reason: judgment.reasoning,
           flags: judgment.flags,
           message:
@@ -943,6 +982,15 @@ export async function handlePipelineStream(
       type: 'complete',
       savedIds: savedDrafts.map((d) => d.id),
       count: savedDrafts.length,
+      stories: savedDrafts.map((d) => ({
+        id: d.id,
+        headline: d.ai_headline,
+        source: d.source_names?.[0] || d.topic || 'News',
+        accuracy: d.scores?.accuracy ?? d.confidence_score,
+        judge_pass: Boolean(d.judge_pass),
+        flags: d.flags ?? [],
+        used_fallback_snippet: Boolean(d.used_fallback_snippet),
+      })),
     });
     res.end?.();
   } catch (err) {

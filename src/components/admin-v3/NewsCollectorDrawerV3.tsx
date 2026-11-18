@@ -33,6 +33,49 @@ interface StageState {
   message: string;
 }
 
+function ReasoningBulletList({
+  text,
+  tone = 'ink',
+}: {
+  text: string;
+  tone?: 'ink' | 'muted';
+}) {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length <= 1) {
+    return (
+      <V3Text role="body" tone={tone}>
+        {text}
+      </V3Text>
+    );
+  }
+
+  return (
+    <View style={{ gap: 4 }}>
+      {sentences.map((sentence, idx) => (
+        <View
+          key={idx}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: V3_SPACE.xs,
+          }}
+        >
+          <V3Text role="body" tone={tone}>
+            •
+          </V3Text>
+          <V3Text role="body" tone={tone} style={{ flex: 1 }}>
+            {sentence}
+          </V3Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function NewsCollectorDrawerV3({
   visible,
   getIdToken,
@@ -61,8 +104,15 @@ export function NewsCollectorDrawerV3({
     headline: string;
     summary: string;
   } | null>(null);
+  const [currentStoryTitle, setCurrentStoryTitle] = useState<string | null>(
+    null
+  );
   const [claims, setClaims] = useState<ClaimEvent[]>([]);
-  const [retryNote, setRetryNote] = useState<string | null>(null);
+  const [retryInfo, setRetryInfo] = useState<{
+    headline: string;
+    reason: string;
+    flags: string[];
+  } | null>(null);
   const [finalScores, setFinalScores] = useState<{
     pass: boolean;
     accuracy: number;
@@ -71,6 +121,17 @@ export function NewsCollectorDrawerV3({
     readability: number;
   } | null>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [savedStories, setSavedStories] = useState<
+    {
+      id: string;
+      headline: string;
+      source: string;
+      accuracy: number;
+      judge_pass: boolean;
+      flags: string[];
+      used_fallback_snippet: boolean;
+    }[]
+  >([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -98,10 +159,12 @@ export function NewsCollectorDrawerV3({
   const resetState = () => {
     setErrorMsg(null);
     setDraftPreview(null);
+    setCurrentStoryTitle(null);
     setClaims([]);
-    setRetryNote(null);
+    setRetryInfo(null);
     setFinalScores(null);
     setSavedIds([]);
+    setSavedStories([]);
     setAgent1({ status: 'idle', message: 'Initializing...' });
     setAgent2({ status: 'idle', message: 'Waiting for Agent 1 handoff...' });
     setAgent3({ status: 'idle', message: 'Waiting for Agent 2 draft...' });
@@ -183,17 +246,24 @@ export function NewsCollectorDrawerV3({
               message: String(evt.message || 'Drafting summary...'),
             });
           } else if (evt.type === 'agent2_done') {
+            const headlineStr = String(evt.headline || '');
             setAgent2({
               status: 'done',
               message: evt.isRetry
                 ? 'Self-corrected draft generated from Judge critique.'
                 : 'Drafted Grade-6 summary.',
             });
+            setCurrentStoryTitle(headlineStr || null);
             setDraftPreview({
-              headline: String(evt.headline || ''),
+              headline: headlineStr,
               summary: String(evt.summary || ''),
             });
           } else if (evt.type === 'agent3_start') {
+            if (evt.headline) {
+              setCurrentStoryTitle(String(evt.headline));
+            }
+            setClaims([]);
+            setFinalScores(null);
             setAgent3({
               status: 'running',
               message: String(evt.message || 'Auditing claims...'),
@@ -209,6 +279,9 @@ export function NewsCollectorDrawerV3({
               },
             ]);
           } else if (evt.type === 'agent3_retry') {
+            const retryHeadline = String(
+              evt.headline || currentStoryTitle || draftPreview?.headline || ''
+            );
             setAgent3({
               status: 'retry',
               message: String(evt.message || 'Sending critique back to Agent 2...'),
@@ -217,7 +290,13 @@ export function NewsCollectorDrawerV3({
               status: 'running',
               message: 'Re-drafting based on Judge critique...',
             });
-            setRetryNote(String(evt.reason || ''));
+            setRetryInfo({
+              headline: retryHeadline,
+              reason: String(evt.reason || ''),
+              flags: Array.isArray(evt.flags)
+                ? evt.flags.map((f) => String(f))
+                : [],
+            });
           } else if (evt.type === 'agent3_done') {
             const scores = evt.scores as {
               accuracy: number;
@@ -235,6 +314,19 @@ export function NewsCollectorDrawerV3({
             });
           } else if (evt.type === 'complete') {
             setSavedIds((evt.savedIds as string[]) || []);
+            if (Array.isArray(evt.stories)) {
+              setSavedStories(
+                evt.stories as {
+                  id: string;
+                  headline: string;
+                  source: string;
+                  accuracy: number;
+                  judge_pass: boolean;
+                  flags: string[];
+                  used_fallback_snippet: boolean;
+                }[]
+              );
+            }
           } else if (evt.type === 'error') {
             setErrorMsg(String(evt.message || 'Collection error'));
           }
@@ -287,7 +379,7 @@ export function NewsCollectorDrawerV3({
         }}
       >
         <View style={{ gap: 2 }}>
-          <V3Text role="kicker" tone="green">
+          <V3Text role="kicker" tone="accent">
             NEWS COLLECTION
           </V3Text>
           <V3Text role="section">Live Multi-Agent Collection</V3Text>
@@ -348,7 +440,7 @@ export function NewsCollectorDrawerV3({
           ) : null}
 
           {errorMsg ? (
-            <V3Text role="body" tone="red">
+            <V3Text role="body" tone="danger">
               {errorMsg}
             </V3Text>
           ) : null}
@@ -398,13 +490,28 @@ export function NewsCollectorDrawerV3({
           ) : null}
         </V3Card>
 
-        {retryNote ? (
+        {retryInfo ? (
           <V3Card
             variant="filled"
-            style={{ backgroundColor: V3_COLORS.orangeSoft, gap: V3_SPACE.xs }}
+            style={{ backgroundColor: V3_COLORS.warningSoft, gap: V3_SPACE.xs }}
           >
-            <V3Badge label="AUTO-CORRECTION" tone="pending" />
-            <V3Text role="body">{retryNote}</V3Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: V3_SPACE.xs,
+              }}
+            >
+              <V3Badge label="AUTO-CORRECTION" tone="pending" />
+              {retryInfo.flags.map((flag) => (
+                <V3Badge key={flag} label={flag} tone="pending" />
+              ))}
+            </View>
+            {retryInfo.headline ? (
+              <V3Text role="headline">{retryInfo.headline}</V3Text>
+            ) : null}
+            <ReasoningBulletList text={retryInfo.reason} tone="ink" />
           </V3Card>
         ) : null}
 
@@ -421,9 +528,12 @@ export function NewsCollectorDrawerV3({
             <V3Text role="headline">Agent 3 · Quality Judge</V3Text>
             <V3Badge {...getStageBadge(agent3.status)} />
           </View>
-          <V3Text role="body" tone="muted">
-            {agent3.message}
-          </V3Text>
+          {currentStoryTitle ? (
+            <V3Text role="kicker" tone="muted">
+              STORY: {currentStoryTitle}
+            </V3Text>
+          ) : null}
+          <ReasoningBulletList text={agent3.message} tone="muted" />
 
           {claims.length > 0 ? (
             <View style={{ gap: V3_SPACE.xs, paddingTop: V3_SPACE.xs }}>
@@ -472,16 +582,99 @@ export function NewsCollectorDrawerV3({
         </V3Card>
 
         {savedIds.length > 0 ? (
-          <View style={{ alignItems: 'flex-end' }}>
-            <V3Button
-              label="Open Saved Story"
-              variant="primary"
-              onPress={() => {
-                handleClose();
-                onOpenArticle(savedIds[0]);
+          <V3Card variant="outlined" style={{ gap: V3_SPACE.md }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: V3_SPACE.sm,
               }}
-            />
-          </View>
+            >
+              <View style={{ gap: 2 }}>
+                <V3Text role="kicker" tone="accent">
+                  COLLECTION COMPLETE
+                </V3Text>
+                <V3Text role="headline">
+                  {savedIds.length}{' '}
+                  {savedIds.length === 1 ? 'story' : 'stories'} ready to review
+                </V3Text>
+              </View>
+              <V3Button
+                label="Back to Today's Edition"
+                variant="outline"
+                size="sm"
+                onPress={handleClose}
+              />
+            </View>
+
+            {savedStories.length > 0 ? (
+              <View style={{ gap: V3_SPACE.sm }}>
+                <V3Rule />
+                {savedStories.map((story) => {
+                  const isReady =
+                    story.judge_pass &&
+                    story.accuracy >= 80 &&
+                    !story.used_fallback_snippet &&
+                    story.flags.length === 0;
+                  return (
+                    <View
+                      key={story.id}
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: V3_SPACE.sm,
+                        paddingVertical: V3_SPACE.xs,
+                      }}
+                    >
+                      <View style={{ flex: 1, minWidth: 220, gap: 4 }}>
+                        <V3Text role="headline">{story.headline}</V3Text>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            gap: V3_SPACE.xs,
+                          }}
+                        >
+                          <V3Text role="mono" tone="muted">
+                            {story.source.toUpperCase()} · ACC {story.accuracy}
+                          </V3Text>
+                          <V3Badge
+                            label={isReady ? 'READY TO APPROVE' : 'NEEDS CHECK'}
+                            tone={isReady ? 'approved' : 'pending'}
+                          />
+                        </View>
+                      </View>
+                      <V3Button
+                        label="Review"
+                        variant="primary"
+                        size="sm"
+                        onPress={() => {
+                          handleClose();
+                          onOpenArticle(story.id);
+                        }}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={{ alignItems: 'flex-end' }}>
+                <V3Button
+                  label="Review Collected Stories"
+                  variant="primary"
+                  onPress={() => {
+                    handleClose();
+                    onOpenArticle(savedIds[0]);
+                  }}
+                />
+              </View>
+            )}
+          </V3Card>
         ) : null}
       </ScrollView>
     </View>

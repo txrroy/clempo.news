@@ -112,22 +112,24 @@ export default function AdminDashboardScreen() {
 
   if (authLoading) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: V3_COLORS.canvas,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        <V3Text role="mono">LOADING SESSION...</V3Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.surface }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: V3_COLORS.canvas,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <V3Text role="mono">LOADING SESSION...</V3Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   if (!user || !isAuthorized) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.surface }}>
         <AdminLoginV3
           authError={authError}
           unauthorizedEmail={user && !isAuthorized ? user.email ?? null : null}
@@ -143,7 +145,8 @@ export default function AdminDashboardScreen() {
   const enabledSourcesCount = sources.filter((s) => s.enabled).length;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: V3_COLORS.surface }}>
+      <View style={{ flex: 1, backgroundColor: V3_COLORS.canvas }}>
       {/* Minimal 3-Item Top Nav + Google Photo Avatar */}
       <View
         style={{
@@ -195,7 +198,7 @@ export default function AdminDashboardScreen() {
                       paddingVertical: V3_SPACE.xs,
                       borderBottomWidth: 2,
                       borderBottomColor: active
-                        ? V3_COLORS.green
+                        ? V3_COLORS.accent
                         : 'transparent',
                     }}
                   >
@@ -241,7 +244,7 @@ export default function AdminDashboardScreen() {
         }}
       >
         {articlesError ? (
-          <V3Text role="body" tone="red" style={{ marginBottom: V3_SPACE.lg }}>
+          <V3Text role="body" tone="danger" style={{ marginBottom: V3_SPACE.lg }}>
             {articlesError}
           </V3Text>
         ) : null}
@@ -334,6 +337,7 @@ export default function AdminDashboardScreen() {
           setSelectedArticleId(id);
         }}
       />
+      </View>
     </SafeAreaView>
   );
 }

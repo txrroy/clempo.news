@@ -110,7 +110,7 @@ export function TreeV3({
                 key={`${link.source.data.id}->${link.target.data.id}`}
                 d={d}
                 fill="none"
-                stroke={active ? V3_COLORS.green : V3_COLORS.border}
+                stroke={active ? V3_COLORS.accent : V3_COLORS.border}
                 strokeWidth={active ? 2 : 1.5}
               />
             );
@@ -126,15 +126,24 @@ export function TreeV3({
           const bg = isSelected
             ? V3_COLORS.ink
             : item.tone === 'green'
-              ? V3_COLORS.greenSoft
+              ? V3_COLORS.accentSoft
               : item.tone === 'orange'
-                ? V3_COLORS.orangeSoft
+                ? V3_COLORS.warningSoft
                 : item.tone === 'red'
-                  ? V3_COLORS.redSoft
+                  ? V3_COLORS.dangerSoft
                   : V3_COLORS.surface;
 
           // Strictly background OR border (never both!)
           const hasFill = bg !== V3_COLORS.surface;
+
+          const semanticTone =
+            item.tone === 'green'
+              ? 'accent'
+              : item.tone === 'orange'
+                ? 'warning'
+                : item.tone === 'red'
+                  ? 'danger'
+                  : undefined;
 
           return (
             <Pressable
@@ -164,8 +173,8 @@ export function TreeV3({
                 tone={
                   isSelected
                     ? 'inverse'
-                    : item.tone
-                      ? item.tone
+                    : semanticTone
+                      ? semanticTone
                       : 'muted'
                 }
                 numberOfLines={1}
@@ -177,8 +186,8 @@ export function TreeV3({
                 tone={
                   isSelected
                     ? 'inverse'
-                    : item.tone
-                      ? item.tone
+                    : semanticTone
+                      ? semanticTone
                       : 'ink'
                 }
                 tabularNums

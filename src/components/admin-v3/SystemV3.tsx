@@ -192,6 +192,10 @@ export function SystemV3({
     const m = new Map(trustLoop.stats.map((s) => [s.flag, s]));
     return m;
   }, [trustLoop.stats]);
+  const suggestionByFlag = useMemo(() => {
+    const m = new Map(trustLoop.suggestions.map((s) => [s.flag, s]));
+    return m;
+  }, [trustLoop.suggestions]);
 
   const pendingDiffs = useMemo(
     () =>
@@ -281,7 +285,7 @@ export function SystemV3({
         }}
       >
         <View style={{ gap: 2 }}>
-          <V3Text role="kicker" tone="green">
+          <V3Text role="kicker" tone="accent">
             SYSTEM · POLICY {activePolicy.active_version.toUpperCase()}
           </V3Text>
           <V3Text role="title">Editorial Agents &amp; Rules</V3Text>
@@ -303,9 +307,9 @@ export function SystemV3({
         <V3Card
           variant="filled"
           padding="md"
-          style={{ backgroundColor: V3_COLORS.greenSoft }}
+          style={{ backgroundColor: V3_COLORS.accentSoft }}
         >
-          <V3Text role="body" tone="green" weight="600">
+          <V3Text role="body" tone="accent" weight="600">
             {feedback}
           </V3Text>
         </V3Card>
@@ -506,67 +510,15 @@ export function SystemV3({
               {AUTONOMY_FLAGS.map((flag) => {
                 const level = autonomyMap[flag] ?? 'ask_me';
                 const stat = trustStatByFlag.get(flag);
+                const sug = suggestionByFlag.get(flag);
+                const isPromote = sug?.kind === 'promote';
                 const trustLabel =
                   !stat || stat.total === 0
                     ? 'NO DECIDED STORIES YET'
                     : `${stat.accepted}/${stat.total} ACCEPTED UNEDITED (${stat.rate}%)`;
                 return (
-                  <View
-                    key={flag}
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: V3_SPACE.sm,
-                      paddingVertical: V3_SPACE.xs,
-                    }}
-                  >
-                    <View style={{ gap: 2 }}>
-                      <V3Text role="body" weight="600">
-                        {getFlagShortLabel(flag)}
-                      </V3Text>
-                      <V3Text role="mono" tone="subtle">
-                        {trustLabel}
-                      </V3Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: V3_SPACE.xs }}>
-                      {(
-                        [
-                          { v: 'ask_me' as AutonomyLevel, l: 'Ask editor' },
-                          { v: 'fix_then_show' as AutonomyLevel, l: 'Fix & show' },
-                          {
-                            v: 'fix_automatically' as AutonomyLevel,
-                            l: 'Auto-fix',
-                          },
-                        ] as const
-                      ).map((opt) => (
-                        <PillOption
-                          key={opt.v}
-                          label={opt.l}
-                          active={level === opt.v}
-                          onPress={() =>
-                            setDraftSettings({
-                              ...draftSettings,
-                              flag_autonomy: {
-                                ...autonomyMap,
-                                [flag]: opt.v,
-                              },
-                            })
-                          }
-                        />
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
-
-              {trustLoop.suggestions.length > 0 ? (
-                <View style={{ gap: V3_SPACE.sm, paddingTop: V3_SPACE.xs }}>
-                  <V3Rule />
-                  {trustLoop.suggestions.map((sug) => (
+                  <View key={flag} style={{ gap: V3_SPACE.xs }}>
                     <View
-                      key={sug.flag}
                       style={{
                         flexDirection: 'row',
                         flexWrap: 'wrap',
@@ -576,35 +528,95 @@ export function SystemV3({
                         paddingVertical: V3_SPACE.xs,
                       }}
                     >
-                      <View style={{ flex: 1, minWidth: 220, gap: 4 }}>
-                        <V3Badge
-                          label={
-                            sug.kind === 'promote'
-                              ? 'TRUST LOOP SUGGESTION'
-                              : 'QUALITY SAFEGUARD'
-                          }
-                          tone={sug.kind === 'promote' ? 'approved' : 'pending'}
-                        />
-                        <V3Text role="body">{sug.message}</V3Text>
+                      <View style={{ gap: 2 }}>
+                        <V3Text role="body" weight="600">
+                          {getFlagShortLabel(flag)}
+                        </V3Text>
+                        <V3Text role="mono" tone="subtle">
+                          {trustLabel}
+                        </V3Text>
                       </View>
-                      <V3Button
-                        label={sug.actionLabel}
-                        variant="outline"
-                        size="sm"
-                        onPress={() =>
-                          setDraftSettings({
-                            ...draftSettings,
-                            flag_autonomy: {
-                              ...autonomyMap,
-                              [sug.flag]: sug.targetLevel,
+                      <View style={{ flexDirection: 'row', gap: V3_SPACE.xs }}>
+                        {(
+                          [
+                            { v: 'ask_me' as AutonomyLevel, l: 'Ask editor' },
+                            {
+                              v: 'fix_then_show' as AutonomyLevel,
+                              l: 'Fix & show',
                             },
-                          })
-                        }
-                      />
+                            {
+                              v: 'fix_automatically' as AutonomyLevel,
+                              l: 'Auto-fix',
+                            },
+                          ] as const
+                        ).map((opt) => (
+                          <PillOption
+                            key={opt.v}
+                            label={opt.l}
+                            active={level === opt.v}
+                            onPress={() =>
+                              setDraftSettings({
+                                ...draftSettings,
+                                flag_autonomy: {
+                                  ...autonomyMap,
+                                  [flag]: opt.v,
+                                },
+                              })
+                            }
+                          />
+                        ))}
+                      </View>
                     </View>
-                  ))}
-                </View>
-              ) : null}
+                    {sug ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: V3_SPACE.sm,
+                          paddingHorizontal: V3_SPACE.md,
+                          paddingVertical: V3_SPACE.sm,
+                          backgroundColor: isPromote
+                            ? V3_COLORS.accentSoft
+                            : V3_COLORS.warningSoft,
+                          borderLeftWidth: 3,
+                          borderLeftColor: isPromote
+                            ? V3_COLORS.accent
+                            : V3_COLORS.warning,
+                          borderRadius: V3_RADII.sharp,
+                        }}
+                      >
+                        <View style={{ flex: 1, minWidth: 220, gap: 4 }}>
+                          <V3Badge
+                            label={
+                              isPromote
+                                ? 'TRUST LOOP SUGGESTION'
+                                : 'QUALITY SAFEGUARD'
+                            }
+                            tone={isPromote ? 'approved' : 'pending'}
+                          />
+                          <V3Text role="body">{sug.message}</V3Text>
+                        </View>
+                        <V3Button
+                          label={sug.actionLabel}
+                          variant="outline"
+                          size="sm"
+                          onPress={() =>
+                            setDraftSettings({
+                              ...draftSettings,
+                              flag_autonomy: {
+                                ...autonomyMap,
+                                [sug.flag]: sug.targetLevel,
+                              },
+                            })
+                          }
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
 
             <V3Rule />
@@ -635,7 +647,7 @@ export function SystemV3({
                 }
                 trackColor={{
                   false: V3_COLORS.border,
-                  true: V3_COLORS.green,
+                  true: V3_COLORS.accent,
                 }}
               />
             </View>
@@ -651,7 +663,7 @@ export function SystemV3({
               }}
             >
               <View style={{ gap: 4 }}>
-                <V3Text role="kicker" tone="green">
+                <V3Text role="kicker" tone="accent">
                   UNSAVED CHANGES ({pendingDiffs.length})
                 </V3Text>
                 <V3Text role="mono" tone="ink">

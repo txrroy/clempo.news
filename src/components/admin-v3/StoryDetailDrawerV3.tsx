@@ -80,10 +80,53 @@ function getStatusBadgeProps(article: Article): {
   return { label: 'COULD NOT VERIFY', tone: 'rejected' };
 }
 
-function getScoreTone(score: number): 'green' | 'orange' | 'red' {
-  if (score >= 85) return 'green';
-  if (score >= 65) return 'orange';
-  return 'red';
+function getScoreTone(score: number): 'accent' | 'warning' | 'danger' {
+  if (score >= 85) return 'accent';
+  if (score >= 65) return 'warning';
+  return 'danger';
+}
+
+function ReasoningBulletList({
+  text,
+  tone = 'muted',
+}: {
+  text: string;
+  tone?: 'ink' | 'muted';
+}) {
+  const items = text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (items.length <= 1) {
+    return (
+      <V3Text role="body" tone={tone}>
+        {text}
+      </V3Text>
+    );
+  }
+
+  return (
+    <View style={{ gap: V3_SPACE.xs }}>
+      {items.map((item, idx) => (
+        <View
+          key={`${idx}-${item.slice(0, 12)}`}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: V3_SPACE.sm,
+          }}
+        >
+          <V3Text role="body" tone={tone}>
+            •
+          </V3Text>
+          <V3Text role="body" tone={tone} style={{ flex: 1 }}>
+            {item}
+          </V3Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export function StoryDetailDrawerV3(props: StoryDetailDrawerV3Props) {
@@ -268,6 +311,8 @@ function StoryDetailContent({
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const [showCustomSteer, setShowCustomSteer] = useState(false);
+  const [showProvideSource, setShowProvideSource] = useState(false);
+  const [customSourceUrl, setCustomSourceUrl] = useState('');
   const [regenLevel, setRegenLevel] = useState<ReadingLevel>(
     (article.instructions_snapshot?.reading_level as ReadingLevel) || 'grade 6'
   );
@@ -284,13 +329,18 @@ function StoryDetailContent({
   const { width: windowWidth } = useWindowDimensions();
   const isWideSplit = windowWidth >= 900;
 
-  const [selectedSentenceIdx, setSelectedSentenceIdx] = useState<number | null>(
-    0
-  );
   const [localSourceChecked, setLocalSourceChecked] = useState(
     Boolean(article.source_checked)
   );
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  const unsupportedClaims = useMemo(
+    () =>
+      (article.claims ?? []).filter(
+        (c) => c.evidence.trim().toLowerCase() === 'unsupported'
+      ),
+    [article.claims]
+  );
 
   const sentenceMappings = useMemo(() => {
     const sentences = summary
@@ -299,6 +349,28 @@ function StoryDetailContent({
       .filter(Boolean);
     const claims = article.claims ?? [];
     const unverifiedSnippet = isSnippetOnlyUnverified(article);
+
+    // Map each unsupported claim to its best-matching sentence so it is never hidden by another claim
+    const unsupportedBySentence = new Map<number, string>();
+    for (const c of unsupportedClaims) {
+      const cWords = c.claim
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 3);
+      let bestSentIdx = -1;
+      let bestSentHits = 0;
+      sentences.forEach((s, sIdx) => {
+        const sLower = s.toLowerCase();
+        const hits = cWords.filter((w) => sLower.includes(w)).length;
+        if (hits > bestSentHits) {
+          bestSentHits = hits;
+          bestSentIdx = sIdx;
+        }
+      });
+      if (bestSentIdx >= 0 && bestSentHits >= 2) {
+        unsupportedBySentence.set(bestSentIdx, c.claim);
+      }
+    }
 
     return sentences.map((sentence, idx) => {
       const words = sentence
@@ -317,8 +389,12 @@ function StoryDetailContent({
         }
       }
 
-      const evidenceQuote = bestClaim?.evidence?.trim() || '';
+      const mappedUnsupported = unsupportedBySentence.get(idx);
+      const evidenceQuote = mappedUnsupported
+        ? 'unsupported'
+        : bestClaim?.evidence?.trim() || '';
       const isExplicitlyUnsupported =
+        Boolean(mappedUnsupported) ||
         evidenceQuote.toLowerCase() === 'unsupported';
       const status: 'supported' | 'unsupported' | 'unverified' =
         isExplicitlyUnsupported
@@ -334,7 +410,16 @@ function StoryDetailContent({
         status,
       };
     });
-  }, [article, summary]);
+  }, [article, summary, unsupportedClaims]);
+
+  const [selectedSentenceIdx, setSelectedSentenceIdx] = useState<number | null>(
+    () => {
+      const firstUnsupported = sentenceMappings.findIndex(
+        (m) => m.status === 'unsupported'
+      );
+      return firstUnsupported >= 0 ? firstUnsupported : 0;
+    }
+  );
 
   const sourceSegments = useMemo(() => {
     const rawSource = (article.source_text || '').trim();
@@ -495,16 +580,19 @@ function StoryDetailContent({
     redirectInstructions: string;
     readingLevel?: ReadingLevel;
     tryAlternateSource?: boolean;
+    customSourceUrl?: string;
     addOtherSide?: boolean;
   }) => {
     const resolvedGoal =
       options.goal ||
-      (options.addOtherSide
-        ? 'Search other outlets for opposing views, draft a balanced sentence, and cite the source.'
-        : options.tryAlternateSource
-          ? 'Find an alternate outlet URL and extract full article text.'
-          : options.redirectInstructions.trim() ||
-            'Rewrite and verify the draft against the source text.');
+      (options.customSourceUrl
+        ? `Extract full article from ${options.customSourceUrl} and verify all claims.`
+        : options.addOtherSide
+          ? 'Search other outlets for opposing views, draft a balanced sentence, and cite the source.'
+          : options.tryAlternateSource
+            ? 'Find an alternate outlet URL and extract full article text.'
+            : options.redirectInstructions.trim() ||
+              'Rewrite and verify the draft against the source text.');
 
     setBusyAction('regen');
     setFeedback(null);
@@ -523,6 +611,7 @@ function StoryDetailContent({
         targetSummaryWords: regenWords,
         redirectInstructions: options.redirectInstructions,
         tryAlternateSource: options.tryAlternateSource,
+        customSourceUrl: options.customSourceUrl,
         addOtherSide: options.addOtherSide,
         idToken: token,
         onProgress: (ev) => setLiveSteps((prev) => [...prev, ev]),
@@ -697,10 +786,10 @@ function StoryDetailContent({
                 borderRadius: V3_RADII.sharp,
                 borderWidth: 1.5,
                 borderColor: localSourceChecked
-                  ? V3_COLORS.green
-                  : V3_COLORS.red,
+                  ? V3_COLORS.accent
+                  : V3_COLORS.danger,
                 backgroundColor: localSourceChecked
-                  ? V3_COLORS.green
+                  ? V3_COLORS.accent
                   : 'transparent',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -715,7 +804,7 @@ function StoryDetailContent({
             <V3Text
               role="mono"
               weight="600"
-              tone={localSourceChecked ? 'ink' : 'red'}
+              tone={localSourceChecked ? 'ink' : 'danger'}
             >
               I checked this against the source (required to approve &ldquo;Could
               not verify&rdquo; stories)
@@ -814,15 +903,24 @@ function StoryDetailContent({
                 role="kicker"
                 tone={
                   whyNeedsYou.state === 'Ready to approve'
-                    ? 'green'
+                    ? 'accent'
                     : whyNeedsYou.state === 'Needs a check'
-                      ? 'orange'
-                      : 'red'
+                      ? 'warning'
+                      : 'danger'
                 }
               >
                 {whyNeedsYou.headline}
               </V3Text>
-              <V3Text role="body">{whyNeedsYou.sentence}</V3Text>
+              <ReasoningBulletList text={whyNeedsYou.sentence} tone="ink" />
+              {requiresPreFlightCheck && unsupportedClaims.length > 0 ? (
+                <View style={{ gap: 2, marginTop: V3_SPACE.xs }}>
+                  {unsupportedClaims.map((c, idx) => (
+                    <V3Text key={idx} role="mono" tone="danger">
+                      • Unmatched claim: &ldquo;{c.claim}&rdquo;
+                    </V3Text>
+                  ))}
+                </View>
+              ) : null}
             </View>
 
             <View
@@ -833,86 +931,119 @@ function StoryDetailContent({
                 gap: V3_SPACE.sm,
               }}
             >
-              {snippetUnverified ? (
-                <V3Button
-                  label="Try another source"
-                  variant="dark"
-                  size="sm"
-                  disabled={busyAction !== null}
-                  onPress={() =>
-                    void handleRunAgentAction({
-                      tryAlternateSource: true,
-                      redirectInstructions:
-                        'Re-extract from alternate outlet URL and verify all claims against full text.',
-                    })
-                  }
-                />
-              ) : null}
+              {requiresPreFlightCheck ? (
+                <>
+                  {snippetUnverified ? (
+                    <V3Button
+                      label="Try another source"
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          tryAlternateSource: true,
+                          redirectInstructions:
+                            'Re-extract from alternate outlet URL and verify all claims against full text.',
+                        })
+                      }
+                    />
+                  ) : (
+                    <V3Button
+                      label={
+                        busyAction === 'regen'
+                          ? 'Verifying...'
+                          : 'Verify against source'
+                      }
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          goal: 'Rewrite any unsupported sentence or headline claim so every claim matches a direct quote in the source text.',
+                          redirectInstructions:
+                            'Check both the headline and every sentence strictly against the source text. Remove or rewrite any unsupported claim (including numbers or dates not backed by the source) so every claim is directly supported by a quote in the source text.',
+                        })
+                      }
+                    />
+                  )}
+                  <V3Button
+                    label={
+                      showProvideSource ? 'Hide source input ▲' : 'Provide better source'
+                    }
+                    variant="outline"
+                    size="sm"
+                    disabled={busyAction !== null}
+                    onPress={() => setShowProvideSource((v) => !v)}
+                  />
+                </>
+              ) : (
+                <>
+                  {flags.includes('TOO_COMPLEX') ? (
+                    <V3Button
+                      label="Simplify"
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          goal: 'Simplify reading level to Grade 5–6 with everyday words.',
+                          readingLevel: 'grade 5',
+                          redirectInstructions:
+                            'Simplify reading level to Grade 5–6. Replace complex or technical terms with everyday words and shorten long sentences.',
+                        })
+                      }
+                    />
+                  ) : null}
 
-              {flags.includes('TOO_COMPLEX') ? (
-                <V3Button
-                  label="Simplify"
-                  variant="dark"
-                  size="sm"
-                  disabled={busyAction !== null}
-                  onPress={() =>
-                    void handleRunAgentAction({
-                      goal: 'Simplify reading level to Grade 5–6 with everyday words.',
-                      readingLevel: 'grade 5',
-                      redirectInstructions:
-                        'Simplify reading level to Grade 5–6. Replace complex or technical terms with everyday words and shorten long sentences.',
-                    })
-                  }
-                />
-              ) : null}
+                  {flags.includes('ONE_SIDED') ? (
+                    <V3Button
+                      label="Add other side"
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          addOtherSide: true,
+                          redirectInstructions:
+                            'Present each side’s position in one calm, neutral attributed sentence so the summary is balanced.',
+                        })
+                      }
+                    />
+                  ) : null}
 
-              {flags.includes('ONE_SIDED') ? (
-                <V3Button
-                  label="Add other side"
-                  variant="dark"
-                  size="sm"
-                  disabled={busyAction !== null}
-                  onPress={() =>
-                    void handleRunAgentAction({
-                      addOtherSide: true,
-                      redirectInstructions:
-                        'Present each side’s position in one calm, neutral attributed sentence so the summary is balanced.',
-                    })
-                  }
-                />
-              ) : null}
+                  {flags.includes('LOADED_LANGUAGE') ? (
+                    <V3Button
+                      label="Neutralize tone"
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          goal: 'Replace loaded wording with calm, neutral reporting.',
+                          redirectInstructions:
+                            'Replace any loaded or emotional adjectives with plain, neutral verbs and attributed statements.',
+                        })
+                      }
+                    />
+                  ) : null}
 
-              {flags.includes('LOADED_LANGUAGE') ? (
-                <V3Button
-                  label="Neutralize tone"
-                  variant="dark"
-                  size="sm"
-                  disabled={busyAction !== null}
-                  onPress={() =>
-                    void handleRunAgentAction({
-                      goal: 'Replace loaded wording with calm, neutral reporting.',
-                      redirectInstructions:
-                        'Replace any loaded or emotional adjectives with plain, neutral verbs and attributed statements.',
-                    })
-                  }
-                />
-              ) : null}
-
-              {flags.includes('GRAPHIC_DETAIL') ? (
-                <V3Button
-                  label="Soften for G-rating"
-                  variant="dark"
-                  size="sm"
-                  disabled={busyAction !== null}
-                  onPress={() =>
-                    void handleRunAgentAction({
-                      goal: 'Remove graphic details to meet G-rated safety.',
-                      redirectInstructions:
-                        'Remove all graphic or injury details and state what happened in one plain factual G-rated sentence.',
-                    })
-                  }
-                />
-              ) : null}
+                  {flags.includes('GRAPHIC_DETAIL') ? (
+                    <V3Button
+                      label="Soften for G-rating"
+                      variant="dark"
+                      size="sm"
+                      disabled={busyAction !== null}
+                      onPress={() =>
+                        void handleRunAgentAction({
+                          goal: 'Remove graphic details to meet G-rated safety.',
+                          redirectInstructions:
+                            'Remove all graphic or injury details and state what happened in one plain factual G-rated sentence.',
+                        })
+                      }
+                    />
+                  ) : null}
+                </>
+              )}
 
               <V3Button
                 label={showCustomSteer ? 'Hide rewrite ▲' : 'Rewrite with AI ▼'}
@@ -922,6 +1053,65 @@ function StoryDetailContent({
               />
             </View>
           </View>
+
+          {feedback ? (
+            <View
+              style={{
+                paddingHorizontal: V3_SPACE.md,
+                paddingVertical: V3_SPACE.sm,
+                borderRadius: V3_RADII.control,
+                backgroundColor: V3_COLORS.surface,
+                borderWidth: 1,
+                borderColor: V3_COLORS.border,
+              }}
+            >
+              <V3Text role="mono" tone="ink">
+                {feedback}
+              </V3Text>
+            </View>
+          ) : null}
+
+          {showProvideSource ? (
+            <View style={{ gap: V3_SPACE.sm }}>
+              <V3Rule />
+              <V3Text role="kicker">PROVIDE BETTER SOURCE URL</V3Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: V3_SPACE.sm,
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 240 }}>
+                  <V3Input
+                    value={customSourceUrl}
+                    onChangeText={setCustomSourceUrl}
+                    placeholder="https://..."
+                  />
+                </View>
+                <V3Button
+                  label={
+                    busyAction === 'regen'
+                      ? 'Verifying...'
+                      : 'Verify with source'
+                  }
+                  variant="dark"
+                  size="sm"
+                  disabled={
+                    busyAction !== null || !customSourceUrl.trim().startsWith('http')
+                  }
+                  onPress={() =>
+                    void handleRunAgentAction({
+                      customSourceUrl: customSourceUrl.trim(),
+                      redirectInstructions:
+                        'Extract the full article from the editor-provided source URL and rewrite/verify all claims strictly against it.',
+                    })
+                  }
+                />
+              </View>
+            </View>
+          ) : null}
 
           {showCustomSteer ? (
             <View style={{ gap: V3_SPACE.md }}>
@@ -1047,9 +1237,9 @@ function StoryDetailContent({
                       : '•';
                 const tone =
                   step.status === 'done'
-                    ? 'green'
+                    ? 'accent'
                     : step.status === 'warn'
-                      ? 'orange'
+                      ? 'warning'
                       : 'ink';
                 return (
                   <View
@@ -1078,7 +1268,7 @@ function StoryDetailContent({
           {regenPreview ? (
             <View style={{ gap: V3_SPACE.sm }}>
               <V3Rule />
-              <V3Text role="kicker" tone="green">
+              <V3Text role="kicker" tone="accent">
                 CANDIDATE REWRITE
               </V3Text>
               <V3Text role="section">{regenPreview.after.ai_headline}</V3Text>
@@ -1088,7 +1278,7 @@ function StoryDetailContent({
               </V3Text>
               {regenPreview.after.addedSources &&
               regenPreview.after.addedSources.length > 0 ? (
-                <V3Text role="mono" tone="green" weight="600">
+                <V3Text role="mono" tone="accent" weight="600">
                   Consulted &amp; cited outlets:{' '}
                   {regenPreview.after.addedSources
                     .map((s) => s.name)
@@ -1181,16 +1371,17 @@ function StoryDetailContent({
                           borderLeftWidth: 2,
                           borderLeftColor: isSelected
                             ? item.status === 'unsupported'
-                              ? V3_COLORS.red
-                              : V3_COLORS.green
+                              ? V3_COLORS.danger
+                              : V3_COLORS.accent
                             : item.status === 'unsupported'
-                              ? V3_COLORS.red
+                              ? V3_COLORS.danger
                               : 'transparent',
-                          backgroundColor: isSelected
-                            ? item.status === 'unsupported'
-                              ? V3_COLORS.redSoft
-                              : V3_COLORS.greenSoft
-                            : 'transparent',
+                          backgroundColor:
+                            item.status === 'unsupported'
+                              ? V3_COLORS.dangerSoft
+                              : isSelected
+                                ? V3_COLORS.accentSoft
+                                : 'transparent',
                           ...(Platform.OS === 'web'
                             ? ({ cursor: 'pointer' } as Record<
                                 string,
@@ -1264,7 +1455,7 @@ function StoryDetailContent({
               </View>
 
               {activeMapping?.status === 'unsupported' ? (
-                <V3Text role="body" tone="red" weight="600">
+                <V3Text role="body" tone="danger" weight="600">
                   No direct quote found in the source text for the selected
                   sentence.
                 </V3Text>
@@ -1289,11 +1480,11 @@ function StoryDetailContent({
                         paddingHorizontal: seg.highlighted ? V3_SPACE.md : 0,
                         paddingVertical: seg.highlighted ? V3_SPACE.xs : 0,
                         backgroundColor: seg.highlighted
-                          ? V3_COLORS.greenSoft
+                          ? V3_COLORS.accentSoft
                           : 'transparent',
                         borderLeftWidth: seg.highlighted ? 2 : 0,
                         borderLeftColor: seg.highlighted
-                          ? V3_COLORS.green
+                          ? V3_COLORS.accent
                           : 'transparent',
                       }}
                     >
@@ -1342,7 +1533,7 @@ function StoryDetailContent({
                 <V3Text
                   role="mono"
                   weight="700"
-                  tone={snippetUnverified ? 'red' : getScoreTone(accuracyScore)}
+                  tone={snippetUnverified ? 'danger' : getScoreTone(accuracyScore)}
                 >
                   {snippetUnverified ? 'NOT VERIFIED' : accuracyScore}
                 </V3Text>
@@ -1424,20 +1615,23 @@ function StoryDetailContent({
 
               <V3Rule />
 
-              <View style={{ gap: 2 }}>
+              <View style={{ gap: V3_SPACE.xs }}>
                 <V3Text role="headline">
                   3. Judge · {editorialState} ·{' '}
                   {flags.length > 0
                     ? flags.map(getFlagShortLabel).join(', ')
                     : 'No flags'}
                 </V3Text>
-                <V3Text role="body" tone="muted">
-                  {article.confidence_reasoning ||
+                <ReasoningBulletList
+                  text={
+                    article.confidence_reasoning ||
                     judgeStep?.summary ||
-                    'Verified claims and rubric scores.'}
-                </V3Text>
+                    'Verified claims and rubric scores.'
+                  }
+                  tone="muted"
+                />
                 {flags.map((f: ArticleFlag) => (
-                  <V3Text key={f} role="mono" tone="red">
+                  <V3Text key={f} role="mono" tone="danger">
                     • {getFlagShortLabel(f)}: {getFlagPlainReason(f)}
                   </V3Text>
                 ))}
@@ -1450,9 +1644,9 @@ function StoryDetailContent({
           <V3Card
             variant="filled"
             padding="md"
-            style={{ backgroundColor: V3_COLORS.greenSoft }}
+            style={{ backgroundColor: V3_COLORS.accentSoft }}
           >
-            <V3Text role="body" weight="600" tone="green">
+            <V3Text role="body" weight="600" tone="accent">
               {feedback}
             </V3Text>
           </V3Card>

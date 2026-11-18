@@ -128,7 +128,7 @@ export function SettingsV3({
         }}
       >
         <View style={{ gap: 2 }}>
-          <V3Text role="kicker" tone="green">
+          <V3Text role="kicker" tone="accent">
             SETTINGS
           </V3Text>
           <V3Text role="title">Sources, History &amp; Schedule</V3Text>
@@ -151,9 +151,9 @@ export function SettingsV3({
         <V3Card
           variant="filled"
           padding="md"
-          style={{ backgroundColor: V3_COLORS.greenSoft }}
+          style={{ backgroundColor: V3_COLORS.accentSoft }}
         >
-          <V3Text role="body" tone="green" weight="600">
+          <V3Text role="body" tone="accent" weight="600">
             {feedback}
           </V3Text>
         </V3Card>
@@ -240,7 +240,7 @@ export function SettingsV3({
                     onValueChange={() => void onToggleSource(src.name, userEmail)}
                     trackColor={{
                       false: V3_COLORS.border,
-                      true: V3_COLORS.green,
+                      true: V3_COLORS.accent,
                     }}
                   />
                   <V3Button

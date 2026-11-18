@@ -36,6 +36,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
   Extrapolation,
   interpolate,
   runOnJS,
@@ -91,10 +92,12 @@ function getCoarseLocation(): string {
 }
 
 const SPRING_CONFIG = {
-  damping: 22,
-  stiffness: 260,
-  mass: 0.85,
+  damping: 24,
+  stiffness: 360,
+  mass: 0.75,
 };
+
+const EXIT_EASING = Easing.out(Easing.cubic);
 
 function scaleFont(baseSize: number, fontScale: number): number {
   return Math.round(baseSize * fontScale * 10) / 10;
@@ -799,6 +802,391 @@ function ArticleContextPoints({
   );
 }
 
+interface DeckPanSharedState {
+  activeIdxSV: SharedValue<number>;
+  articlesLenSV: SharedValue<number>;
+  hasOlderNewsSV: SharedValue<boolean>;
+  translateX: SharedValue<number>;
+  translateY: SharedValue<number>;
+  prevTranslateY: SharedValue<number>;
+  isAnimating: SharedValue<boolean>;
+  isPullingPrev: SharedValue<boolean>;
+  flipProgress: SharedValue<number>;
+  isFlippedSV: SharedValue<boolean>;
+  dragModeSV: SharedValue<0 | 1 | 2>;
+  touchStartedInScrollSV: SharedValue<boolean>;
+  activeScrollOffsetSV: SharedValue<number>;
+  activeMaxScrollSV: SharedValue<number>;
+  cardHeightSV: SharedValue<number>;
+  windowWidthSV: SharedValue<number>;
+  windowHeightSV: SharedValue<number>;
+  horizontalThresholdSV: SharedValue<number>;
+  verticalThresholdSV: SharedValue<number>;
+  syncCurrentIndexFromWorklet: (nextIdx: number) => void;
+  triggerOlderNews: () => void;
+}
+
+/**
+ * Per-card memoized pan gesture bound directly to one card's root view.
+ * Keeping each Pan and its simultaneous Native scroll gestures immutable for the card's
+ * lifetime prevents RNGH handlerTag rebinding races (`No handler for tag N`).
+ */
+function useDeckCardPanGesture(
+  cardIndex: number,
+  panShared: DeckPanSharedState,
+  frontScrollGesture?: ReturnType<typeof Gesture.Native>,
+  backScrollGesture?: ReturnType<typeof Gesture.Native>
+) {
+  const cardIndexSV = useSharedValue(cardIndex);
+  useEffect(() => {
+    cardIndexSV.set(cardIndex);
+  }, [cardIndex, cardIndexSV]);
+
+  return useMemo(() => {
+    const {
+      activeIdxSV,
+      articlesLenSV,
+      hasOlderNewsSV,
+      translateX,
+      translateY,
+      prevTranslateY,
+      isAnimating,
+      isPullingPrev,
+      flipProgress,
+      isFlippedSV,
+      dragModeSV,
+      touchStartedInScrollSV,
+      activeScrollOffsetSV,
+      activeMaxScrollSV,
+      cardHeightSV,
+      windowWidthSV,
+      windowHeightSV,
+      horizontalThresholdSV,
+      verticalThresholdSV,
+      syncCurrentIndexFromWorklet,
+      triggerOlderNews,
+    } = panShared;
+
+    let pan = Gesture.Pan();
+    if (frontScrollGesture && backScrollGesture) {
+      pan = pan.simultaneousWithExternalGesture(
+        frontScrollGesture,
+        backScrollGesture
+      );
+    }
+
+    return pan
+      .minDistance(4)
+      .onStart(() => {
+        if (isAnimating.value || cardIndexSV.value !== activeIdxSV.value) {
+          return;
+        }
+        isPullingPrev.set(false);
+        dragModeSV.set(0);
+      })
+      .onUpdate((event) => {
+        if (isAnimating.value || cardIndexSV.value !== activeIdxSV.value) {
+          return;
+        }
+        const activeIdx = activeIdxSV.value;
+        const isCaughtUpCard = activeIdx >= articlesLenSV.value;
+
+        if (dragModeSV.value === 0) {
+          const absX = Math.abs(event.translationX);
+          const absY = Math.abs(event.translationY);
+          if (absX < 4 && absY < 4) return;
+
+          const canScrollActive =
+            !isCaughtUpCard &&
+            activeMaxScrollSV.value > 3 &&
+            touchStartedInScrollSV.value;
+
+          if (!canScrollActive || absX >= absY) {
+            dragModeSV.set(1);
+          } else if (event.translationY < 0) {
+            dragModeSV.set(
+              activeScrollOffsetSV.value >= activeMaxScrollSV.value - 3 ? 1 : 2
+            );
+          } else {
+            dragModeSV.set(activeScrollOffsetSV.value <= 3 ? 1 : 2);
+          }
+        }
+
+        if (dragModeSV.value === 2) {
+          return;
+        }
+
+        const isDownwardPull =
+          activeIdx > 0 &&
+          event.translationY > 10 &&
+          event.translationY > Math.abs(event.translationX);
+
+        if (isDownwardPull) {
+          if (!isPullingPrev.value) {
+            isPullingPrev.set(true);
+            translateX.set(withSpring(0, SPRING_CONFIG));
+            translateY.set(withSpring(0, SPRING_CONFIG));
+          }
+          const entryStart = -cardHeightSV.value;
+          prevTranslateY.set(Math.min(0, entryStart + event.translationY * 1.15));
+          return;
+        }
+
+        if (isPullingPrev.value && event.translationY <= 0) {
+          isPullingPrev.set(false);
+          prevTranslateY.set(
+            withTiming(-(cardHeightSV.value + 120), {
+              duration: 150,
+            })
+          );
+        }
+
+        if (isPullingPrev.value) {
+          const entryStart = -cardHeightSV.value;
+          prevTranslateY.set(
+            Math.min(0, entryStart + Math.max(0, event.translationY) * 1.15)
+          );
+          return;
+        }
+
+        if (isCaughtUpCard) {
+          const resist = !hasOlderNewsSV.value ? 0.22 : 1;
+          const draggingDownEmpty =
+            articlesLenSV.value === 0 && event.translationY > 0;
+          translateX.set(event.translationX * resist);
+          translateY.set(
+            draggingDownEmpty
+              ? event.translationY * 0.22
+              : event.translationY * resist
+          );
+          return;
+        }
+
+        const draggingDownAtStart = activeIdx === 0 && event.translationY > 0;
+        translateX.set(event.translationX);
+        translateY.set(
+          draggingDownAtStart ? event.translationY * 0.22 : event.translationY
+        );
+      })
+      .onEnd((event) => {
+        if (cardIndexSV.value !== activeIdxSV.value) {
+          return;
+        }
+        if (dragModeSV.value === 2) {
+          dragModeSV.set(0);
+          touchStartedInScrollSV.set(false);
+          return;
+        }
+        dragModeSV.set(0);
+        touchStartedInScrollSV.set(false);
+
+        if (isAnimating.value) return;
+        const activeIdx = activeIdxSV.value;
+        const isCaughtUpCard = activeIdx >= articlesLenSV.value;
+
+        if (isPullingPrev.value) {
+          isPullingPrev.set(false);
+          const pulledDownEnough =
+            activeIdx > 0 &&
+            (event.translationY > verticalThresholdSV.value ||
+              event.velocityY > 340);
+
+          if (pulledDownEnough) {
+            isAnimating.set(true);
+            prevTranslateY.set(
+              withTiming(0, { duration: 150, easing: EXIT_EASING }, (finished) => {
+                if (finished) {
+                  const prevIdx = Math.max(0, activeIdxSV.value - 1);
+                  activeIdxSV.set(prevIdx);
+                  prevTranslateY.set(
+                    -Math.max(
+                      cardHeightSV.value + 120,
+                      windowHeightSV.value + 200
+                    )
+                  );
+                  isPullingPrev.set(false);
+                  translateX.set(0);
+                  translateY.set(0);
+                  flipProgress.set(0);
+                  isFlippedSV.set(false);
+                  isAnimating.set(false);
+                  runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
+                } else {
+                  isAnimating.set(false);
+                }
+              })
+            );
+          } else {
+            prevTranslateY.set(
+              withTiming(-(cardHeightSV.value + 120), {
+                duration: 140,
+                easing: EXIT_EASING,
+              })
+            );
+            translateX.set(withSpring(0, SPRING_CONFIG));
+            translateY.set(withSpring(0, SPRING_CONFIG));
+          }
+          return;
+        }
+
+        const absX = Math.abs(event.translationX);
+        const absY = Math.abs(event.translationY);
+        const horizontalDominant = absX >= absY;
+
+        const swipedDown =
+          activeIdx > 0 &&
+          !horizontalDominant &&
+          (event.translationY > verticalThresholdSV.value ||
+            event.velocityY > 340);
+
+        if (swipedDown) {
+          isAnimating.set(true);
+          if (prevTranslateY.value < -cardHeightSV.value) {
+            prevTranslateY.set(-cardHeightSV.value);
+          }
+          translateX.set(withSpring(0, SPRING_CONFIG));
+          translateY.set(withSpring(0, SPRING_CONFIG));
+          prevTranslateY.set(
+            withTiming(0, { duration: 150, easing: EXIT_EASING }, (finished) => {
+              if (finished) {
+                const prevIdx = Math.max(0, activeIdxSV.value - 1);
+                activeIdxSV.set(prevIdx);
+                prevTranslateY.set(
+                  -Math.max(
+                    cardHeightSV.value + 120,
+                    windowHeightSV.value + 200
+                  )
+                );
+                isPullingPrev.set(false);
+                translateX.set(0);
+                translateY.set(0);
+                flipProgress.set(0);
+                isFlippedSV.set(false);
+                isAnimating.set(false);
+                runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
+              } else {
+                isAnimating.set(false);
+              }
+            })
+          );
+          return;
+        }
+
+        const swipedRight =
+          event.translationX > horizontalThresholdSV.value ||
+          event.velocityX > 340;
+        const swipedLeft =
+          event.translationX < -horizontalThresholdSV.value ||
+          event.velocityX < -340;
+        const swipedUp =
+          event.translationY < -verticalThresholdSV.value ||
+          event.velocityY < -340;
+
+        const isForwardSwipe =
+          (horizontalDominant && (swipedRight || swipedLeft)) ||
+          (!horizontalDominant && swipedUp) ||
+          swipedRight ||
+          swipedLeft ||
+          swipedUp;
+
+        if (isCaughtUpCard) {
+          translateX.set(withSpring(0, SPRING_CONFIG));
+          translateY.set(withSpring(0, SPRING_CONFIG));
+          if (isForwardSwipe && hasOlderNewsSV.value) {
+            runOnJS(triggerOlderNews)();
+          }
+          return;
+        }
+
+        if (isForwardSwipe) {
+          isAnimating.set(true);
+          const completeForwardSwipe = (finished?: boolean) => {
+            'worklet';
+            if (finished) {
+              const nextIdx = Math.min(
+                activeIdxSV.value + 1,
+                articlesLenSV.value
+              );
+              activeIdxSV.set(nextIdx);
+              translateX.set(0);
+              translateY.set(0);
+              flipProgress.set(0);
+              isFlippedSV.set(false);
+              isAnimating.set(false);
+              runOnJS(syncCurrentIndexFromWorklet)(nextIdx);
+            } else {
+              isAnimating.set(false);
+            }
+          };
+
+          if (
+            swipedUp &&
+            (!horizontalDominant || (!swipedRight && !swipedLeft))
+          ) {
+            translateY.set(
+              withTiming(
+                -windowHeightSV.value * 1.1,
+                { duration: 145, easing: EXIT_EASING },
+                completeForwardSwipe
+              )
+            );
+          } else {
+            const exitX =
+              swipedLeft && (!swipedRight || event.translationX < 0)
+                ? -windowWidthSV.value * 1.15
+                : windowWidthSV.value * 1.15;
+            translateX.set(
+              withTiming(
+                exitX,
+                { duration: 135, easing: EXIT_EASING },
+                completeForwardSwipe
+              )
+            );
+          }
+        } else {
+          translateX.set(withSpring(0, SPRING_CONFIG));
+          translateY.set(withSpring(0, SPRING_CONFIG));
+        }
+      })
+      .onFinalize((_, success) => {
+        if (cardIndexSV.value !== activeIdxSV.value) {
+          return;
+        }
+        dragModeSV.set(0);
+        touchStartedInScrollSV.set(false);
+        if (!success && !isAnimating.value) {
+          if (isPullingPrev.value) {
+            isPullingPrev.set(false);
+            prevTranslateY.set(
+              withTiming(-(cardHeightSV.value + 120), {
+                duration: 150,
+              })
+            );
+          }
+          translateX.set(withSpring(0, SPRING_CONFIG));
+          translateY.set(withSpring(0, SPRING_CONFIG));
+        }
+      });
+  }, [backScrollGesture, cardIndexSV, frontScrollGesture, panShared]);
+}
+
+function PanCardWrapper({
+  cardIndex,
+  panShared,
+  children,
+}: {
+  cardIndex: number;
+  panShared: DeckPanSharedState;
+  children: ReactNode;
+}) {
+  const cardPanGesture = useDeckCardPanGesture(cardIndex, panShared);
+  return (
+    <GestureDetector gesture={cardPanGesture}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </GestureDetector>
+  );
+}
+
 /**
  * Keyed card slot whose position, scale, shadow, and opacity are driven solely on the UI thread
  * by `activeIdxSV` so swiping forward or pulling backward never flashes or unmounts mid-transition.
@@ -988,8 +1376,7 @@ function ArticleDeckCard({
   activeScrollOffsetSV,
   activeMaxScrollSV,
   touchStartedInScrollSV,
-  activeFrontScrollGesture,
-  activeBackScrollGesture,
+  panShared,
   editionMeta,
   showImages,
   baseImageTier,
@@ -1026,8 +1413,7 @@ function ArticleDeckCard({
   activeScrollOffsetSV: SharedValue<number>;
   activeMaxScrollSV: SharedValue<number>;
   touchStartedInScrollSV: SharedValue<boolean>;
-  activeFrontScrollGesture: ReturnType<typeof Gesture.Native>;
-  activeBackScrollGesture: ReturnType<typeof Gesture.Native>;
+  panShared: DeckPanSharedState;
   editionMeta: EditionCoverMeta;
   showImages: boolean;
   baseImageTier: 0 | 1 | 2;
@@ -1098,13 +1484,29 @@ function ArticleDeckCard({
     activeScrollOffsetSV,
   ]);
 
-  const inactiveScrollGesture = useMemo(() => Gesture.Native(), []);
-  const frontScrollGesture =
-    isActive && !isFlipped ? activeFrontScrollGesture : inactiveScrollGesture;
-  const backScrollGesture =
-    isActive && isFlipped ? activeBackScrollGesture : inactiveScrollGesture;
+  const frontScrollGesture = useMemo(() => Gesture.Native(), []);
+  const backScrollGesture = useMemo(() => Gesture.Native(), []);
+  const cardPanGesture = useDeckCardPanGesture(
+    cardIndex,
+    panShared,
+    isCover ? undefined : frontScrollGesture,
+    isCover ? undefined : backScrollGesture
+  );
 
-  const flipTapGesture = useMemo(
+  const bannerFlipTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(250)
+        .maxDistance(10)
+        .onEnd(() => {
+          if (isCover) return;
+          if (cardIndex !== activeIdxSV.value || isFlippedSV.value) return;
+          runOnJS(toggleFlip)();
+        }),
+    [activeIdxSV, cardIndex, isCover, isFlippedSV, toggleFlip]
+  );
+
+  const bodyFlipTapGesture = useMemo(
     () =>
       Gesture.Tap()
         .maxDuration(250)
@@ -1284,7 +1686,7 @@ function ArticleDeckCard({
           overflow: 'hidden',
         }}
       >
-        <GestureDetector gesture={flipTapGesture}>
+        <GestureDetector gesture={bannerFlipTapGesture}>
           <View style={{ width: '100%', height: '100%' }}>
             {showingPhoto && article.image_url ? (
               <Image
@@ -1343,7 +1745,7 @@ function ArticleDeckCard({
               paddingBottom: compact ? 12 : 14,
             }}
           >
-            <GestureDetector gesture={flipTapGesture}>
+            <GestureDetector gesture={bodyFlipTapGesture}>
               <View style={{ flexGrow: 1 }}>
                 <EditorialCardContent
                   article={article}
@@ -1604,8 +2006,9 @@ function ArticleDeckCard({
   );
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* FRONT FACE */}
+    <GestureDetector gesture={cardPanGesture}>
+      <View style={{ flex: 1 }}>
+        {/* FRONT FACE */}
       <Animated.View
         pointerEvents={!isActive || isFlipped ? 'none' : 'auto'}
         style={[
@@ -1633,10 +2036,10 @@ function ArticleDeckCard({
         {frontContent}
       </Animated.View>
 
-      {/* BACK FACE (seeded with opacity: 0 before animated style applies so mount never flashes) */}
-      {isActive && !isCover ? (
+      {/* BACK FACE (mounted for non-cover cards so backScrollGesture never unmounts independently; seeded opacity: 0) */}
+      {!isCover ? (
         <Animated.View
-          pointerEvents={isFlipped ? 'auto' : 'none'}
+          pointerEvents={isActive && isFlipped ? 'auto' : 'none'}
           style={[
             {
               opacity: 0,
@@ -1867,7 +2270,7 @@ function ArticleDeckCard({
                     Thanks! Add another line?
                   </Text>
                   <TextInput
-                    ref={contextNoteInputRef}
+                    ref={isActive ? contextNoteInputRef : undefined}
                     value={contextNoteText}
                     onChangeText={onChangeContextNoteText}
                     placeholder="Write a quick note..."
@@ -1956,7 +2359,8 @@ function ArticleDeckCard({
           </View>
         </Animated.View>
       ) : null}
-    </View>
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -2035,7 +2439,10 @@ export function SwipeCardDeck({
   const hasOlderNewsSV = useSharedValue(Boolean(onRequestOlderNews));
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  const windowWidthSV = useSharedValue(width);
   const windowHeightSV = useSharedValue(height);
+  const horizontalThresholdSV = useSharedValue(Math.min(width * 0.18, 72));
+  const verticalThresholdSV = useSharedValue(Math.min(height * 0.12, 72));
   const cardHeightSV = useSharedValue(Math.max(420, height * 0.72));
   const prevTranslateY = useSharedValue(-Math.max(height, 1000) - 200);
   const isPullingPrev = useSharedValue(false);
@@ -2046,12 +2453,20 @@ export function SwipeCardDeck({
   const activeMaxScrollSV = useSharedValue(0);
   const touchStartedInScrollSV = useSharedValue(false);
   const dragModeSV = useSharedValue<0 | 1 | 2>(0);
-  const activeFrontScrollGesture = useMemo(() => Gesture.Native(), []);
-  const activeBackScrollGesture = useMemo(() => Gesture.Native(), []);
 
   useEffect(() => {
+    windowWidthSV.value = width;
     windowHeightSV.value = height;
-  }, [height, windowHeightSV]);
+    horizontalThresholdSV.value = Math.min(width * 0.18, 72);
+    verticalThresholdSV.value = Math.min(height * 0.12, 72);
+  }, [
+    height,
+    horizontalThresholdSV,
+    verticalThresholdSV,
+    width,
+    windowHeightSV,
+    windowWidthSV,
+  ]);
 
   useEffect(() => {
     articlesLenSV.set(articles.length);
@@ -2158,9 +2573,6 @@ export function SwipeCardDeck({
     };
   }, [articles, mountNowMs]);
 
-  const horizontalThreshold = Math.min(width * 0.24, 100);
-  const verticalThreshold = Math.min(height * 0.16, 100);
-
   const resetFlip = useCallback(() => {
     setIsFlipped(false);
     isFlippedSV.set(false);
@@ -2168,9 +2580,10 @@ export function SwipeCardDeck({
   }, [flipProgress, isFlippedSV]);
 
   const toggleFlip = useCallback(() => {
-    if (currentIndex === 1) {
+    const idx = activeIdxSV.get();
+    if (idx === 1) {
       setFlipTipDismissed(true);
-    } else if (currentIndex === 2) {
+    } else if (idx === 2) {
       setTopicTipDismissed(true);
     }
     setIsFlipped((prev) => {
@@ -2179,12 +2592,84 @@ export function SwipeCardDeck({
       flipProgress.set(withTiming(next ? 1 : 0, { duration: 320 }));
       return next;
     });
-  }, [currentIndex, flipProgress, isFlippedSV]);
+  }, [activeIdxSV, flipProgress, isFlippedSV]);
 
-  // Reset deck to first card when the article list or resetToken changes
+  const prevResetTokenRef = useRef(resetToken);
+  const prevArticleIdsRef = useRef<string[]>(articles.map((a) => a.id));
+
+  // Reset deck to first card only when resetToken changes or the feed is replaced,
+  // preserving the reader's position when articles are saved/liked or an item is removed.
   useEffect(() => {
-    activeIdxSV.set(0);
+    const nextIds = articles.map((a) => a.id);
+    const prevIds = prevArticleIdsRef.current;
+    const tokenChanged = resetToken !== prevResetTokenRef.current;
+    const sameIds =
+      prevIds.length === nextIds.length &&
+      prevIds.every((id, idx) => id === nextIds[idx]);
+
+    prevResetTokenRef.current = resetToken;
+    prevArticleIdsRef.current = nextIds;
     articlesLenSV.set(articles.length);
+
+    if (!tokenChanged && sameIds) {
+      return;
+    }
+
+    const nextIdSet = new Set(nextIds);
+    const isInPlaceRemoval =
+      !tokenChanged &&
+      prevIds.length > 0 &&
+      nextIds.length > 0 &&
+      nextIds.every((id) => prevIds.includes(id));
+
+    if (isInPlaceRemoval) {
+      setCurrentIndex((prevIdx) => {
+        const clamped = Math.min(prevIdx, nextIds.length);
+        if (clamped !== prevIdx) {
+          activeIdxSV.set(clamped);
+          onIndexChangeRef.current?.(clamped);
+        }
+        return clamped;
+      });
+      return;
+    }
+
+    if (!tokenChanged && prevIds.length > 0 && nextIdSet.size > 0) {
+      // Check if the current active article still exists in the updated list
+      // (e.g. preference re-ranking while reading); if so, keep the reader on it.
+      setCurrentIndex((prevIdx) => {
+        const activeId = prevIds[prevIdx];
+        if (activeId) {
+          const newIdx = nextIds.indexOf(activeId);
+          if (newIdx !== -1) {
+            if (newIdx !== prevIdx) {
+              activeIdxSV.set(newIdx);
+              onIndexChangeRef.current?.(newIdx);
+            }
+            return newIdx;
+          }
+        }
+        activeIdxSV.set(0);
+        resetFlip();
+        setFeedbackStep('idle');
+        setFeedbackDocId(null);
+        setNoteText('');
+        setContextNoteText('');
+        setSendingContextNote(false);
+        translateX.value = 0;
+        translateY.value = 0;
+        prevTranslateY.value = -Math.max(
+          cardHeightSV.value + 120,
+          windowHeightSV.value + 200
+        );
+        isPullingPrev.value = false;
+        onIndexChangeRef.current?.(0);
+        return 0;
+      });
+      return;
+    }
+
+    activeIdxSV.set(0);
     setCurrentIndex(0);
     resetFlip();
     setFeedbackStep('idle');
@@ -2407,7 +2892,7 @@ export function SwipeCardDeck({
     translateY.set(
       withTiming(
         -Math.max(cardHeightSV.get() + 120, windowHeightSV.get() + 200),
-        { duration: 220 },
+        { duration: 160, easing: EXIT_EASING },
         (finished) => {
           if (finished) {
             const nextIdx = Math.min(activeIdxSV.value + 1, articlesLenSV.value);
@@ -2437,270 +2922,54 @@ export function SwipeCardDeck({
     windowHeightSV,
   ]);
 
-  // Unified deck pan gesture: Left, Right, and Up advance forward; Down pulls previous card from above.
-  // When a story overflows, vertical drags inside the body scroll cleanly until reaching the top/bottom boundary.
-  const deckPanGesture = Gesture.Pan()
-    .simultaneousWithExternalGesture(
-      activeFrontScrollGesture,
-      activeBackScrollGesture
-    )
-    .minDistance(8)
-    .onStart(() => {
-      if (isAnimating.value) return;
-      isPullingPrev.value = false;
-      dragModeSV.value = 0;
-    })
-    .onUpdate((event) => {
-      if (isAnimating.value) return;
-      const activeIdx = activeIdxSV.value;
-      const isCaughtUpCard = activeIdx >= articlesLenSV.value;
-
-      if (dragModeSV.value === 0) {
-        const absX = Math.abs(event.translationX);
-        const absY = Math.abs(event.translationY);
-        if (absX < 8 && absY < 8) return;
-
-        const canScrollActive =
-          !isCaughtUpCard &&
-          activeMaxScrollSV.value > 3 &&
-          touchStartedInScrollSV.value;
-
-        if (!canScrollActive || absX >= absY) {
-          dragModeSV.value = 1;
-        } else if (event.translationY < 0) {
-          dragModeSV.value =
-            activeScrollOffsetSV.value >= activeMaxScrollSV.value - 3 ? 1 : 2;
-        } else {
-          dragModeSV.value = activeScrollOffsetSV.value <= 3 ? 1 : 2;
-        }
-      }
-
-      if (dragModeSV.value === 2) {
-        return;
-      }
-
-      const isDownwardPull =
-        activeIdx > 0 &&
-        event.translationY > 10 &&
-        event.translationY > Math.abs(event.translationX);
-
-      if (isDownwardPull) {
-        if (!isPullingPrev.value) {
-          isPullingPrev.value = true;
-          translateX.value = withSpring(0, SPRING_CONFIG);
-          translateY.value = withSpring(0, SPRING_CONFIG);
-        }
-        const entryStart = -cardHeightSV.value;
-        prevTranslateY.value = Math.min(0, entryStart + event.translationY * 1.15);
-        return;
-      }
-
-      if (isPullingPrev.value && event.translationY <= 0) {
-        isPullingPrev.value = false;
-        prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-          duration: 150,
-        });
-      }
-
-      if (isPullingPrev.value) {
-        const entryStart = -cardHeightSV.value;
-        prevTranslateY.value = Math.min(
-          0,
-          entryStart + Math.max(0, event.translationY) * 1.15
-        );
-        return;
-      }
-
-      if (isCaughtUpCard) {
-        const resist = !hasOlderNewsSV.value ? 0.22 : 1;
-        const draggingDownEmpty =
-          articlesLenSV.value === 0 && event.translationY > 0;
-        translateX.value = event.translationX * resist;
-        translateY.value = draggingDownEmpty
-          ? event.translationY * 0.22
-          : event.translationY * resist;
-        return;
-      }
-
-      const draggingDownAtStart = activeIdx === 0 && event.translationY > 0;
-      translateX.value = event.translationX;
-      translateY.value = draggingDownAtStart
-        ? event.translationY * 0.22
-        : event.translationY;
-    })
-    .onEnd((event) => {
-      if (dragModeSV.value === 2) {
-        dragModeSV.value = 0;
-        touchStartedInScrollSV.value = false;
-        return;
-      }
-      dragModeSV.value = 0;
-      touchStartedInScrollSV.value = false;
-
-      if (isAnimating.value) return;
-      const activeIdx = activeIdxSV.value;
-      const isCaughtUpCard = activeIdx >= articlesLenSV.value;
-
-      if (isPullingPrev.value) {
-        isPullingPrev.value = false;
-        const pulledDownEnough =
-          activeIdx > 0 &&
-          (event.translationY > verticalThreshold || event.velocityY > 480);
-
-        if (pulledDownEnough) {
-          isAnimating.value = true;
-          prevTranslateY.value = withTiming(
-            0,
-            { duration: 190 },
-            (finished) => {
-              if (finished) {
-                const prevIdx = Math.max(0, activeIdxSV.value - 1);
-                activeIdxSV.value = prevIdx;
-                prevTranslateY.value = -Math.max(
-                  cardHeightSV.value + 120,
-                  windowHeightSV.value + 200
-                );
-                isPullingPrev.value = false;
-                translateX.value = 0;
-                translateY.value = 0;
-                flipProgress.value = 0;
-                isFlippedSV.value = false;
-                isAnimating.value = false;
-                runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
-              } else {
-                isAnimating.value = false;
-              }
-            }
-          );
-        } else {
-          prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-            duration: 180,
-          });
-          translateX.value = withSpring(0, SPRING_CONFIG);
-          translateY.value = withSpring(0, SPRING_CONFIG);
-        }
-        return;
-      }
-
-      const absX = Math.abs(event.translationX);
-      const absY = Math.abs(event.translationY);
-      const horizontalDominant = absX >= absY;
-
-      const swipedDown =
-        activeIdx > 0 &&
-        !horizontalDominant &&
-        (event.translationY > verticalThreshold || event.velocityY > 480);
-
-      if (swipedDown) {
-        isAnimating.value = true;
-        if (prevTranslateY.value < -cardHeightSV.value) {
-          prevTranslateY.value = -cardHeightSV.value;
-        }
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-        prevTranslateY.value = withTiming(
-          0,
-          { duration: 210 },
-          (finished) => {
-            if (finished) {
-              const prevIdx = Math.max(0, activeIdxSV.value - 1);
-              activeIdxSV.value = prevIdx;
-              prevTranslateY.value = -Math.max(
-                cardHeightSV.value + 120,
-                windowHeightSV.value + 200
-              );
-              isPullingPrev.value = false;
-              translateX.value = 0;
-              translateY.value = 0;
-              flipProgress.value = 0;
-              isFlippedSV.value = false;
-              isAnimating.value = false;
-              runOnJS(syncCurrentIndexFromWorklet)(prevIdx);
-            } else {
-              isAnimating.value = false;
-            }
-          }
-        );
-        return;
-      }
-
-      const swipedRight =
-        event.translationX > horizontalThreshold || event.velocityX > 480;
-      const swipedLeft =
-        event.translationX < -horizontalThreshold || event.velocityX < -480;
-      const swipedUp =
-        event.translationY < -verticalThreshold || event.velocityY < -480;
-
-      const isForwardSwipe =
-        (horizontalDominant && (swipedRight || swipedLeft)) ||
-        (!horizontalDominant && swipedUp) ||
-        swipedRight ||
-        swipedLeft ||
-        swipedUp;
-
-      if (isCaughtUpCard) {
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-        if (isForwardSwipe && hasOlderNewsSV.value) {
-          runOnJS(triggerOlderNews)();
-        }
-        return;
-      }
-
-      if (isForwardSwipe) {
-        isAnimating.value = true;
-        const completeForwardSwipe = (finished?: boolean) => {
-          'worklet';
-          if (finished) {
-            const nextIdx = Math.min(activeIdxSV.value + 1, articlesLenSV.value);
-            activeIdxSV.value = nextIdx;
-            translateX.value = 0;
-            translateY.value = 0;
-            flipProgress.value = 0;
-            isFlippedSV.value = false;
-            isAnimating.value = false;
-            runOnJS(syncCurrentIndexFromWorklet)(nextIdx);
-          } else {
-            isAnimating.value = false;
-          }
-        };
-
-        if (swipedUp && (!horizontalDominant || (!swipedRight && !swipedLeft))) {
-          translateY.value = withTiming(
-            -height * 1.1,
-            { duration: 210 },
-            completeForwardSwipe
-          );
-        } else {
-          const exitX =
-            swipedLeft && (!swipedRight || event.translationX < 0)
-              ? -width * 1.15
-              : width * 1.15;
-          translateX.value = withTiming(
-            exitX,
-            { duration: 200 },
-            completeForwardSwipe
-          );
-        }
-      } else {
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-      }
-    })
-    .onFinalize((_, success) => {
-      dragModeSV.value = 0;
-      touchStartedInScrollSV.value = false;
-      if (!success && !isAnimating.value) {
-        if (isPullingPrev.value) {
-          isPullingPrev.value = false;
-          prevTranslateY.value = withTiming(-(cardHeightSV.value + 120), {
-            duration: 150,
-          });
-        }
-        translateX.value = withSpring(0, SPRING_CONFIG);
-        translateY.value = withSpring(0, SPRING_CONFIG);
-      }
-    });
+  const panShared = useMemo<DeckPanSharedState>(
+    () => ({
+      activeIdxSV,
+      articlesLenSV,
+      hasOlderNewsSV,
+      translateX,
+      translateY,
+      prevTranslateY,
+      isAnimating,
+      isPullingPrev,
+      flipProgress,
+      isFlippedSV,
+      dragModeSV,
+      touchStartedInScrollSV,
+      activeScrollOffsetSV,
+      activeMaxScrollSV,
+      cardHeightSV,
+      windowWidthSV,
+      windowHeightSV,
+      horizontalThresholdSV,
+      verticalThresholdSV,
+      syncCurrentIndexFromWorklet,
+      triggerOlderNews,
+    }),
+    [
+      activeIdxSV,
+      activeMaxScrollSV,
+      activeScrollOffsetSV,
+      articlesLenSV,
+      cardHeightSV,
+      dragModeSV,
+      flipProgress,
+      hasOlderNewsSV,
+      horizontalThresholdSV,
+      isAnimating,
+      isFlippedSV,
+      isPullingPrev,
+      prevTranslateY,
+      syncCurrentIndexFromWorklet,
+      touchStartedInScrollSV,
+      translateX,
+      translateY,
+      triggerOlderNews,
+      verticalThresholdSV,
+      windowHeightSV,
+      windowWidthSV,
+    ]
+  );
 
   const pullPrevScrimStyle = useAnimatedStyle(() => {
     const offscreenY = -(cardHeightSV.value + 120);
@@ -2772,16 +3041,15 @@ export function SwipeCardDeck({
       }}
     >
       {/* Unified Keyed Floating Card Stack */}
-      <GestureDetector gesture={deckPanGesture}>
-        <View
-          onLayout={(e) => handleCardContainerLayout(e.nativeEvent.layout.height)}
-          style={{
-            flex: 1,
-            width: '100%',
-            maxWidth: 420,
-            position: 'relative',
-          }}
-        >
+      <View
+        onLayout={(e) => handleCardContainerLayout(e.nativeEvent.layout.height)}
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: 420,
+          position: 'relative',
+        }}
+      >
           {/* Scrim cast over active card when pulling the previous card down */}
           <Animated.View
             pointerEvents="none"
@@ -2843,8 +3111,7 @@ export function SwipeCardDeck({
                   activeScrollOffsetSV={activeScrollOffsetSV}
                   activeMaxScrollSV={activeMaxScrollSV}
                   touchStartedInScrollSV={touchStartedInScrollSV}
-                  activeFrontScrollGesture={activeFrontScrollGesture}
-                  activeBackScrollGesture={activeBackScrollGesture}
+                  panShared={panShared}
                   editionMeta={editionMeta}
                   showImages={showImages}
                   baseImageTier={baseImageTier}
@@ -2886,7 +3153,8 @@ export function SwipeCardDeck({
               width={width}
               isInteractive={isCaughtUpActive}
             >
-              <View
+              <PanCardWrapper cardIndex={articles.length} panShared={panShared}>
+                <View
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -3159,11 +3427,11 @@ export function SwipeCardDeck({
                     </Text>
                   )}
                 </View>
-              </View>
+                </View>
+              </PanCardWrapper>
             </DeckSlotCard>
           ) : null}
-        </View>
-      </GestureDetector>
+      </View>
     </View>
   );
 }

@@ -115,7 +115,7 @@ export function computeTrustLoopStats(
           flag,
           kind: 'promote',
           targetLevel: 'fix_then_show',
-          message: `${label} accepted ${accepted} of ${total} times (${rate}%). Move to Fix & show?`,
+          message: `${accepted} of ${total} stories (${rate}%) published with no edits. Let the agent draft fixes first?`,
           actionLabel: 'Move to Fix & show',
         });
       } else if (currentLevel === 'fix_then_show') {
@@ -123,7 +123,7 @@ export function computeTrustLoopStats(
           flag,
           kind: 'promote',
           targetLevel: 'fix_automatically',
-          message: `${label} accepted ${accepted} of ${total} times (${rate}%). Move to Auto-fix?`,
+          message: `${accepted} of ${total} stories (${rate}%) published with no edits. Auto-fix without asking first?`,
           actionLabel: 'Move to Auto-fix',
         });
       }
@@ -133,11 +133,13 @@ export function computeTrustLoopStats(
       rate !== null &&
       rate < MAX_DOWNGRADE_RATE
     ) {
+      const intervened = total - accepted;
+      const intervenedRate = 100 - rate;
       suggestions.push({
         flag,
         kind: 'downgrade',
         targetLevel: 'fix_then_show',
-        message: `${label} unedited acceptance dropped to ${accepted} of ${total} (${rate}%). Move back to Fix & show?`,
+        message: `${intervened} of ${total} stories (${intervenedRate}%) were edited or rejected. Move back to Fix & show?`,
         actionLabel: 'Move back to Fix & show',
       });
     }

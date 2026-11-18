@@ -1,5 +1,3 @@
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
 import {
   computeTodayCounts,
   getEditorialState,
@@ -8,14 +6,15 @@ import {
   isSnippetOnlyUnverified,
 } from '@/lib/editorialLabels';
 import type { ActivePolicyDoc, Article, PipelineRunLog } from '@/types/article';
+import { useMemo, useState } from 'react';
+import { View } from 'react-native';
 import {
   V3AccordionItem,
   V3Badge,
   V3Button,
   V3Card,
-  V3Rule,
   V3Tabs,
-  V3Text,
+  V3Text
 } from './primitives';
 import { V3_COLORS, V3_SPACE } from './tokens';
 import { TreeV3, type V3TraceNode, type V3TraceNodeId } from './TreeV3';
@@ -37,6 +36,20 @@ function getArticleDecision(article: Article): 'approved' | 'rejected' | null {
   if (article.status === 'published') return 'approved';
   if (article.status === 'rejected') return 'rejected';
   return null;
+}
+
+function formatEditionDateLabel(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d
+    .toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+    .toUpperCase();
 }
 
 function StoryReviewAccordion({
@@ -90,7 +103,6 @@ function StoryReviewAccordion({
 
   return (
     <View>
-      <V3Rule strong />
       {stories.map((story, idx) => {
         const isExpanded = expandedId === story.id;
         const decision = getArticleDecision(story);
@@ -171,6 +183,9 @@ export function WorkbenchV3({
   onRejectArticle,
 }: WorkbenchV3Props) {
   const [editionTab, setEditionTab] = useState<'stories' | 'trace'>('stories');
+  const [storyFilter, setStoryFilter] = useState<
+    'all' | 'review' | 'published' | 'rejected'
+  >('all');
   const [selectedTraceNode, setSelectedTraceNode] =
     useState<V3TraceNodeId>('signoff');
 
@@ -182,6 +197,28 @@ export function WorkbenchV3({
     () => computeTodayCounts(articles, today),
     [articles, today]
   );
+
+  const filteredStories = useMemo(() => {
+    switch (storyFilter) {
+      case 'review':
+        return todayItems.filter((a) => a.status === 'draft');
+      case 'published':
+        return todayItems.filter((a) => a.status === 'published');
+      case 'rejected':
+        return todayItems.filter((a) => a.status === 'rejected');
+      default:
+        return todayItems;
+    }
+  }, [storyFilter, todayItems]);
+
+  const storiesEmptyLabel =
+    storyFilter === 'review'
+      ? 'No stories waiting for review.'
+      : storyFilter === 'published'
+        ? 'No published stories in this edition yet.'
+        : storyFilter === 'rejected'
+          ? 'No rejected stories in this edition.'
+          : 'No stories collected for this edition yet.';
 
   const missedRunNotice = useMemo(
     () => getMissedRunNotice(latestRunLog, today),
@@ -359,9 +396,69 @@ export function WorkbenchV3({
 
   return (
     <View style={{ gap: V3_SPACE.xl }}>
-      {/* JOB 1: COLLECT NEWS */}
-      <View style={{ gap: V3_SPACE.md }}>
-        <View
+      {/* STANDARD PAGE HEADER (matches System & Settings) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: V3_SPACE.md,
+        }}
+      >
+        <View style={{ gap: 2 }}>
+          <V3Text role="kicker" tone="accent">
+            {formatEditionDateLabel(today)} · {lastRunTimestamp}
+          </V3Text>
+          <V3Text role="title">Today&apos;s edition</V3Text>
+        </View>
+
+        <V3Tabs
+          options={[
+            { id: 'stories', label: 'Stories' },
+            { id: 'trace', label: 'Trace' },
+          ]}
+          value={editionTab}
+          onChange={setEditionTab}
+        />
+      </View>
+
+      {/* JOB 1: COLLECT NEWS / MISSED RUN ERROR ALERT */}
+      {needsCollectionToday ? (
+        <V3Card
+          variant="filled"
+          style={{
+            backgroundColor: V3_COLORS.dangerSoft,
+            borderLeftWidth: 3,
+            borderLeftColor: V3_COLORS.danger,
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: V3_SPACE.md,
+          }}
+        >
+          <View style={{ flex: 1, minWidth: 260, gap: V3_SPACE.xs }}>
+            <V3Badge label="PIPELINE ERROR · MISSED RUN" tone="rejected" />
+            <V3Text role="headline" tone="danger">
+              {missedRunNotice?.title ||
+                `Today's news (${today}) has not been collected yet.`}
+            </V3Text>
+            <V3Text role="body" tone="ink">
+              {missedRunNotice?.detail ||
+                'Run today’s collection to scan enabled RSS feeds and prepare stories for review.'}
+            </V3Text>
+          </View>
+          <V3Button
+            label="Start collecting News"
+            variant="dark"
+            onPress={onStartCollecting}
+          />
+        </V3Card>
+      ) : (
+        <V3Card
+          variant="outlined"
+          padding="lg"
           style={{
             flexDirection: 'row',
             flexWrap: 'wrap',
@@ -371,77 +468,22 @@ export function WorkbenchV3({
           }}
         >
           <View style={{ gap: 2 }}>
-            <V3Text role="kicker" tone="green">
-              01 · COLLECT NEWS
+            <V3Text role="headline">
+              Collected {todayItems.length} stories for {today}
             </V3Text>
-            <V3Text role="section">Daily Collection</V3Text>
+            <V3Text role="mono" tone="muted">
+              LAST COLLECTION: {lastRunTimestamp} · POLICY{' '}
+              {activePolicy.active_version.toUpperCase()}
+            </V3Text>
           </View>
-          <V3Text role="mono" tone="muted">
-            SCHEDULE: {collectionScheduleLabel} · {enabledSourcesCount} SOURCES
-          </V3Text>
-        </View>
-
-        {needsCollectionToday ? (
-          <V3Card
-            variant="filled"
-            style={{
-              backgroundColor: V3_COLORS.orangeSoft,
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: V3_SPACE.md,
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 260, gap: V3_SPACE.xs }}>
-              <V3Badge label="MISSED RUN" tone="pending" />
-              <V3Text role="headline">
-                {missedRunNotice?.title ||
-                  `Today's news (${today}) has not been collected yet.`}
-              </V3Text>
-              <V3Text role="body" tone="muted">
-                {missedRunNotice?.detail ||
-                  'Run today’s collection to scan enabled RSS feeds and prepare stories for review.'}
-              </V3Text>
-            </View>
-            <V3Button
-              label="Start collecting News"
-              variant="dark"
-              onPress={onStartCollecting}
-            />
-          </V3Card>
-        ) : (
-          <V3Card
-            variant="outlined"
-            padding="lg"
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: V3_SPACE.md,
-            }}
-          >
-            <View style={{ gap: 2 }}>
-              <V3Text role="headline">
-                Collected {todayItems.length} stories for {today}
-              </V3Text>
-              <V3Text role="mono" tone="muted">
-                LAST COLLECTION: {lastRunTimestamp} · POLICY{' '}
-                {activePolicy.active_version.toUpperCase()}
-              </V3Text>
-            </View>
-            <V3Button
-              label="Collect Again"
-              variant="outline"
-              size="sm"
-              onPress={onStartCollecting}
-            />
-          </V3Card>
-        )}
-      </View>
-
-      <V3Rule strong />
+          <V3Button
+            label="Collect Again"
+            variant="outline"
+            size="sm"
+            onPress={onStartCollecting}
+          />
+        </V3Card>
+      )}
 
       {/* JOB 2: REVIEW & PUBLISH (TODAY'S EDITION) */}
       <View style={{ gap: V3_SPACE.lg }}>
@@ -454,32 +496,28 @@ export function WorkbenchV3({
             gap: V3_SPACE.md,
           }}
         >
-          <View style={{ gap: 2 }}>
-            <V3Text role="kicker" tone="green">
-              02 · REVIEW &amp; PUBLISH
-            </V3Text>
-            <V3Text role="title">Today&apos;s edition</V3Text>
-            <V3Text role="mono" tone="muted">
-              {todayItems.length} COLLECTED · {counts.needsReview} TO REVIEW ·{' '}
-              {counts.published} PUBLISHED · {counts.rejected} REJECTED
-            </V3Text>
-          </View>
-
           <V3Tabs
             options={[
-              { id: 'stories', label: 'Stories' },
-              { id: 'trace', label: 'Trace' },
+              { id: 'all', label: `${todayItems.length} Collected` },
+              { id: 'review', label: `${counts.needsReview} To Review` },
+              { id: 'published', label: `${counts.published} Published` },
+              { id: 'rejected', label: `${counts.rejected} Rejected` },
             ]}
-            value={editionTab}
-            onChange={setEditionTab}
+            value={storyFilter}
+            onChange={(next) => {
+              setStoryFilter(next);
+              if (editionTab !== 'stories') {
+                setEditionTab('stories');
+              }
+            }}
           />
         </View>
 
         {editionTab === 'stories' ? (
           <StoryReviewAccordion
-            key={`stories-${today}-${todayItems.length}`}
-            stories={todayItems}
-            emptyLabel="No stories collected for this edition yet."
+            key={`stories-${today}-${storyFilter}-${filteredStories.length}`}
+            stories={filteredStories}
+            emptyLabel={storiesEmptyLabel}
             onViewDetails={onViewDetails}
             onApproveArticle={onApproveArticle}
             onRejectArticle={onRejectArticle}
