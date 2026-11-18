@@ -93,11 +93,11 @@ export function NewsCollectorDrawerV3({
   });
   const [agent2, setAgent2] = useState<StageState>({
     status: 'idle',
-    message: 'Waiting for Agent 1 handoff...',
+    message: 'Waiting for Curator handoff...',
   });
   const [agent3, setAgent3] = useState<StageState>({
     status: 'idle',
-    message: 'Waiting for Agent 2 draft...',
+    message: 'Waiting for Writer draft...',
   });
 
   const [draftPreview, setDraftPreview] = useState<{
@@ -166,8 +166,8 @@ export function NewsCollectorDrawerV3({
     setSavedIds([]);
     setSavedStories([]);
     setAgent1({ status: 'idle', message: 'Initializing...' });
-    setAgent2({ status: 'idle', message: 'Waiting for Agent 1 handoff...' });
-    setAgent3({ status: 'idle', message: 'Waiting for Agent 2 draft...' });
+    setAgent2({ status: 'idle', message: 'Waiting for Curator handoff...' });
+    setAgent3({ status: 'idle', message: 'Waiting for Writer draft...' });
   };
 
   const handleRun = async () => {
@@ -250,7 +250,7 @@ export function NewsCollectorDrawerV3({
             setAgent2({
               status: 'done',
               message: evt.isRetry
-                ? 'Self-corrected draft generated from Judge critique.'
+                ? 'Self-corrected draft generated from Verifier critique.'
                 : 'Drafted Grade-6 summary.',
             });
             setCurrentStoryTitle(headlineStr || null);
@@ -284,11 +284,11 @@ export function NewsCollectorDrawerV3({
             );
             setAgent3({
               status: 'retry',
-              message: String(evt.message || 'Sending critique back to Agent 2...'),
+              message: String(evt.message || 'Sending critique back to Writer...'),
             });
             setAgent2({
               status: 'running',
-              message: 'Re-drafting based on Judge critique...',
+              message: 'Re-drafting based on Verifier critique...',
             });
             setRetryInfo({
               headline: retryHeadline,
@@ -456,7 +456,7 @@ export function NewsCollectorDrawerV3({
               gap: V3_SPACE.sm,
             }}
           >
-            <V3Text role="headline">Agent 1 · Collector &amp; Selector</V3Text>
+            <V3Text role="headline">Curator</V3Text>
             <V3Badge {...getStageBadge(agent1.status)} />
           </View>
           <V3Text role="body" tone="muted">
@@ -474,7 +474,7 @@ export function NewsCollectorDrawerV3({
               gap: V3_SPACE.sm,
             }}
           >
-            <V3Text role="headline">Agent 2 · Editorial Summarizer</V3Text>
+            <V3Text role="headline">Writer</V3Text>
             <V3Badge {...getStageBadge(agent2.status)} />
           </View>
           <V3Text role="body" tone="muted">
@@ -525,7 +525,7 @@ export function NewsCollectorDrawerV3({
               gap: V3_SPACE.sm,
             }}
           >
-            <V3Text role="headline">Agent 3 · Quality Judge</V3Text>
+            <V3Text role="headline">Verifier</V3Text>
             <V3Badge {...getStageBadge(agent3.status)} />
           </View>
           {currentStoryTitle ? (

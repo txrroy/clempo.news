@@ -2,7 +2,7 @@ import { Platform, type TextStyle } from 'react-native';
 
 export const V3_COLORS = {
   // Ocean-Ser Semantic Canvas & Surfaces
-  canvas: '#EFF6E033',
+  canvas: '#FCFDF9',
   surface: '#FFFFFF',
   surfaceWell: '#EFF6E0',
 

@@ -330,7 +330,7 @@ export function SystemV3({
             >
               <View style={{ gap: V3_SPACE.xs, flex: 1, minWidth: 240 }}>
                 <V3Badge label="INGESTION" tone="neutral" />
-                <V3Text role="section">Agent 1 · Collector &amp; Selector</V3Text>
+                <V3Text role="section">Curator</V3Text>
               </View>
               <V3Button
                 label={`Manage RSS sources (${enabledSourcesCount}/${sources.length})`}
@@ -341,8 +341,7 @@ export function SystemV3({
             </View>
 
             <V3Text role="body" tone="muted">
-              Scan active RSS feeds, merge duplicate coverage of the same event,
-              and pick high-impact stories within topic and region caps.
+              Finds, groups, and picks the day&apos;s best stories.
             </V3Text>
 
             <V3Rule />
@@ -378,16 +377,15 @@ export function SystemV3({
             </View>
           </V3Card>
 
-          {/* Agent 2: Editorial Summarizer */}
+          {/* Agent 2: Writer */}
           <V3Card variant="filled" style={{ gap: V3_SPACE.md }}>
             <View style={{ gap: V3_SPACE.xs }}>
               <V3Badge label="DRAFTING" tone="neutral" />
-              <V3Text role="section">Agent 2 · Editorial Summarizer</V3Text>
+              <V3Text role="section">Writer</V3Text>
             </View>
 
             <V3Text role="body" tone="muted">
-              Draft calm, neutral, G-rated summaries grounded strictly in scraped
-              source text at the configured reading level and length.
+              Turns complex news into clear, easy-to-read summaries.
             </V3Text>
 
             <V3Rule />
@@ -473,7 +471,7 @@ export function SystemV3({
             </View>
           </V3Card>
 
-          {/* Agent 3: Quality Judge */}
+          {/* Agent 3: Verifier */}
           <V3Card variant="filled" style={{ gap: V3_SPACE.md }}>
             <View
               style={{
@@ -486,7 +484,7 @@ export function SystemV3({
             >
               <View style={{ gap: V3_SPACE.xs, flex: 1, minWidth: 240 }}>
                 <V3Badge label="VERIFICATION" tone="neutral" />
-                <V3Text role="section">Agent 3 · Quality Judge</V3Text>
+                <V3Text role="section">Verifier</V3Text>
               </View>
               <V3Button
                 label="View version history"
@@ -497,8 +495,7 @@ export function SystemV3({
             </View>
 
             <V3Text role="body" tone="muted">
-              Verify every factual claim against source quotes, check G-rated
-              safety, and route drafts to Ready, Needs Check, or Unverified.
+              Double-checks every draft for facts, fairness, and safety.
             </V3Text>
 
             <V3Rule />

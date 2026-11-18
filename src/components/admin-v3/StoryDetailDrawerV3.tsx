@@ -1526,7 +1526,7 @@ function StoryDetailContent({
                 gap: V3_SPACE.lg,
               }}
             >
-              <V3Text role="kicker">JUDGE CHECKS</V3Text>
+              <V3Text role="kicker">VERIFIER CHECKS</V3Text>
 
               <V3Text role="mono" tone="ink" tabularNums>
                 ACCURACY:{' '}
@@ -1583,7 +1583,7 @@ function StoryDetailContent({
               <V3Rule />
               <View style={{ gap: 2 }}>
                 <V3Text role="headline">
-                  1. Collector · {article.source_count ?? 1} outlet(s)
+                  1. Curator · {article.source_count ?? 1} outlet(s)
                   {fetcherStep?.duration_ms
                     ? ` · ${fetcherStep.duration_ms}ms`
                     : ''}
@@ -1599,7 +1599,7 @@ function StoryDetailContent({
 
               <View style={{ gap: 2 }}>
                 <V3Text role="headline">
-                  2. Summarizer · Policy{' '}
+                  2. Writer · Policy{' '}
                   {snapshot?.prompt_version || article.prompt_version || 'v1'} ·{' '}
                   {snapshot?.reading_level || 'grade 6'} · ~
                   {snapshot?.target_summary_words || 60}w
@@ -1617,7 +1617,7 @@ function StoryDetailContent({
 
               <View style={{ gap: V3_SPACE.xs }}>
                 <V3Text role="headline">
-                  3. Judge · {editorialState} ·{' '}
+                  3. Verifier · {editorialState} ·{' '}
                   {flags.length > 0
                     ? flags.map(getFlagShortLabel).join(', ')
                     : 'No flags'}
