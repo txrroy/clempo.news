@@ -229,6 +229,7 @@ function EditorialCardContent({
   compact = false,
   activeTopic,
   activePositionLabel,
+  hideTags = false,
   onSelectTopic,
   onClearTopic,
   onPressWhyItMatters,
@@ -239,6 +240,7 @@ function EditorialCardContent({
   compact?: boolean;
   activeTopic?: string | null;
   activePositionLabel?: string;
+  hideTags?: boolean;
   onSelectTopic?: (topic: string) => void;
   onClearTopic?: () => void;
   onPressWhyItMatters?: () => void;
@@ -347,7 +349,7 @@ function EditorialCardContent({
               </Pressable>
             ) : null}
           </View>
-        ) : visibleTags.length > 0 || trailingMeta ? (
+        ) : (!hideTags && visibleTags.length > 0) || trailingMeta ? (
           <View
             style={{
               flexDirection: 'row',
@@ -356,59 +358,61 @@ function EditorialCardContent({
               marginBottom: Math.round((compact ? 5 : 7) * fontScale),
             }}
           >
-            {visibleTags.map((tag, tagIdx) => {
-              const label = (
-                <Text
-                  style={{
-                    ...sansStyle,
-                    fontSize: kickerFontSize,
-                    fontWeight: '500',
-                    color: '#57534E',
-                  }}
-                >
-                  {formatMetaLabel(tag)}
-                </Text>
-              );
-              return (
-                <View
-                  key={tag}
-                  style={{ flexDirection: 'row', alignItems: 'center' }}
-                >
-                  {tagIdx > 0 ? (
+            {!hideTags
+              ? visibleTags.map((tag, tagIdx) => {
+                  const label = (
                     <Text
                       style={{
                         ...sansStyle,
                         fontSize: kickerFontSize,
                         fontWeight: '500',
                         color: '#57534E',
-                        marginHorizontal: 5,
                       }}
                     >
-                      ·
+                      {formatMetaLabel(tag)}
                     </Text>
-                  ) : null}
-                  {onSelectTopic ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        onSelectTopic(tag);
-                      }}
-                      accessibilityLabel={`Filter by ${tag}`}
-                      hitSlop={4}
-                      style={{
-                        ...(Platform.OS === 'web'
-                          ? ({ cursor: 'pointer' } as Record<string, unknown>)
-                          : {}),
-                      }}
+                  );
+                  return (
+                    <View
+                      key={tag}
+                      style={{ flexDirection: 'row', alignItems: 'center' }}
                     >
-                      {label}
-                    </Pressable>
-                  ) : (
-                    label
-                  )}
-                </View>
-              );
-            })}
+                      {tagIdx > 0 ? (
+                        <Text
+                          style={{
+                            ...sansStyle,
+                            fontSize: kickerFontSize,
+                            fontWeight: '500',
+                            color: '#57534E',
+                            marginHorizontal: 5,
+                          }}
+                        >
+                          ·
+                        </Text>
+                      ) : null}
+                      {onSelectTopic ? (
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            onSelectTopic(tag);
+                          }}
+                          accessibilityLabel={`Filter by ${tag}`}
+                          hitSlop={4}
+                          style={{
+                            ...(Platform.OS === 'web'
+                              ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                              : {}),
+                          }}
+                        >
+                          {label}
+                        </Pressable>
+                      ) : (
+                        label
+                      )}
+                    </View>
+                  );
+                })
+              : null}
             {trailingMeta ? (
               <Text
                 style={{
@@ -418,7 +422,9 @@ function EditorialCardContent({
                   color: '#57534E',
                 }}
               >
-                {visibleTags.length > 0 ? ` · ${trailingMeta}` : trailingMeta}
+                {!hideTags && visibleTags.length > 0
+                  ? ` · ${trailingMeta}`
+                  : trailingMeta}
               </Text>
             ) : null}
           </View>
@@ -1626,6 +1632,11 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
   );
 
   const showingPhoto = Boolean(showImages && article.image_url && !imageLoadFailed);
+  const photoOverlayTags = showingPhoto && !activeTopic
+    ? getArticleTags(article).filter(
+        (tag) => !tag.includes('-') && !tag.includes('_')
+      )
+    : [];
   const bannerHeight = showingPhoto
     ? compact
       ? imageTier === 0
@@ -1694,6 +1705,72 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
             )}
           </View>
         </GestureDetector>
+        {photoOverlayTags.length > 0 ? (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              bottom: compact ? 8 : 10,
+              left: compact ? 12 : 14,
+              right: compact ? 12 : 14,
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {photoOverlayTags.map((tag) => {
+              const pill = (
+                <View
+                  style={{
+                    paddingHorizontal: 9,
+                    paddingVertical: 3,
+                    borderRadius: 999,
+                    backgroundColor: 'rgba(28, 25, 23, 0.72)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.16)',
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...(Fonts?.sans
+                        ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
+                        : {}),
+                      fontSize: scaleFont(11.5, fontScale),
+                      fontWeight: '600',
+                      color: '#FAF9F6',
+                    }}
+                  >
+                    {formatMetaLabel(tag)}
+                  </Text>
+                </View>
+              );
+
+              if (!onSelectTopic) {
+                return <View key={tag}>{pill}</View>;
+              }
+
+              return (
+                <Pressable
+                  key={tag}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    onSelectTopic(tag);
+                  }}
+                  accessibilityLabel={`Filter by ${tag}`}
+                  hitSlop={4}
+                  style={{
+                    ...(Platform.OS === 'web'
+                      ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                      : {}),
+                  }}
+                >
+                  {pill}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       <View style={{ flex: 1, minHeight: 0, position: 'relative' }}>
@@ -1740,6 +1817,7 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
                   fontScale={fontScale}
                   compact={compact}
                   activeTopic={activeTopic}
+                  hideTags={showingPhoto}
                   activePositionLabel={
                     activeTopic
                       ? `${Math.min(cardIndex + 1, totalArticles)} of ${totalArticles}`

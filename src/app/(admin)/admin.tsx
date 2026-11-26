@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AdminLoginV3 } from '@/components/admin-v3/AdminLoginV3';
+import { FeedbackV3 } from '@/components/admin-v3/FeedbackV3';
 import { NewsCollectorDrawerV3 } from '@/components/admin-v3/NewsCollectorDrawerV3';
 import {
   V3Button,
@@ -18,16 +19,18 @@ import { V3_COLORS, V3_SPACE } from '@/components/admin-v3/tokens';
 import { WorkbenchV3 } from '@/components/admin-v3/WorkbenchV3';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useAdminArticles } from '@/hooks/useArticles';
+import { useFeedback } from '@/hooks/useFeedback';
 import {
   useAgentPolicy,
   useLatestPipelineRun,
   useSourcesConfig,
 } from '@/hooks/useGovernance';
 
-type V3NavId = 'workbench' | 'system' | 'settings';
+type V3NavId = 'workbench' | 'feedback' | 'system' | 'settings';
 
 const V3_NAV_ITEMS: { id: V3NavId; label: string }[] = [
   { id: 'workbench', label: 'Workbench' },
+  { id: 'feedback', label: 'Feedback' },
   { id: 'system', label: 'System' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -72,6 +75,11 @@ export default function AdminDashboardScreen() {
   } = useSourcesConfig(isAuthorized);
 
   const latestRunLog = useLatestPipelineRun(isAuthorized);
+  const {
+    items: feedbackItems,
+    loading: feedbackLoading,
+    error: feedbackError,
+  } = useFeedback(isAuthorized);
 
   const [activeNav, setActiveNav] = useState<V3NavId>('workbench');
   const [settingsTab, setSettingsTab] = useState<V3SettingsTab>('sources');
@@ -265,6 +273,14 @@ export default function AdminDashboardScreen() {
               approveArticle(a.id, a.ai_headline, a.ai_summary, user.uid)
             }
             onRejectArticle={(a) => rejectArticle(a.id)}
+          />
+        ) : activeNav === 'feedback' ? (
+          <FeedbackV3
+            items={feedbackItems}
+            loading={feedbackLoading}
+            error={feedbackError}
+            articles={articles}
+            onOpenArticle={(id) => setSelectedArticleId(id)}
           />
         ) : activeNav === 'system' ? (
           <SystemV3

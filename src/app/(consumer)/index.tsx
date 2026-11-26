@@ -1285,7 +1285,7 @@ export default function ConsumerHomeScreen() {
             onPress={() => {
               setMenuOpen(false);
               Linking.openURL(
-                `mailto:${APP_CONFIG.adminEmails[0]}?subject=Clempo%20Support`
+                `mailto:${APP_CONFIG.supportEmail}?subject=Clempo%20Support`
               );
             }}
           >
