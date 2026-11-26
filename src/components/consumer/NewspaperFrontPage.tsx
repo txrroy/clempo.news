@@ -399,7 +399,7 @@ export function NewspaperFrontPage({
 
           <View className="flex-row items-center justify-center gap-3">
             <Image
-              source={require('../../../assets/images/snappylit-logo-v3.png')}
+              source={require('../../../assets/images/clempo-logo.png')}
               contentFit="contain"
               style={{ width: 38, height: 38, borderRadius: 9 }}
             />

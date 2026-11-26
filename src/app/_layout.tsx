@@ -22,6 +22,10 @@ const FONT_STYLESHEETS: { id: string; href: string }[] = [
     id: 'inter-font',
     href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   },
+  {
+    id: 'plus-jakarta-sans-font',
+    href: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap',
+  },
 ];
 
 export default function RootLayout() {

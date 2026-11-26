@@ -186,6 +186,9 @@ export function WorkbenchV3({
   const [storyFilter, setStoryFilter] = useState<
     'all' | 'review' | 'published' | 'rejected'
   >('all');
+  const [editorialFilter, setEditorialFilter] = useState<
+    'all' | 'ready' | 'check' | 'unverified'
+  >('all');
   const [selectedTraceNode, setSelectedTraceNode] =
     useState<V3TraceNodeId>('signoff');
 
@@ -198,10 +201,15 @@ export function WorkbenchV3({
     [articles, today]
   );
 
-  const filteredStories = useMemo(() => {
+  const draftStories = useMemo(
+    () => todayItems.filter((a) => a.status === 'draft'),
+    [todayItems]
+  );
+
+  const statusFilteredStories = useMemo(() => {
     switch (storyFilter) {
       case 'review':
-        return todayItems.filter((a) => a.status === 'draft');
+        return draftStories;
       case 'published':
         return todayItems.filter((a) => a.status === 'published');
       case 'rejected':
@@ -209,16 +217,48 @@ export function WorkbenchV3({
       default:
         return todayItems;
     }
-  }, [storyFilter, todayItems]);
+  }, [draftStories, storyFilter, todayItems]);
+
+  const editorialSubCounts = useMemo(() => {
+    let ready = 0;
+    let check = 0;
+    let unverified = 0;
+    for (const item of draftStories) {
+      const state = getEditorialState(item);
+      if (state === 'Ready to approve') ready += 1;
+      else if (state === 'Needs a check') check += 1;
+      else unverified += 1;
+    }
+    return { ready, check, unverified };
+  }, [draftStories]);
+
+  const filteredStories = useMemo(() => {
+    if (editorialFilter === 'all') return statusFilteredStories;
+    const targetState =
+      editorialFilter === 'ready'
+        ? 'Ready to approve'
+        : editorialFilter === 'check'
+          ? 'Needs a check'
+          : 'Could not verify';
+    return draftStories.filter(
+      (a) => getEditorialState(a) === targetState
+    );
+  }, [draftStories, editorialFilter, statusFilteredStories]);
 
   const storiesEmptyLabel =
-    storyFilter === 'review'
-      ? 'No stories waiting for review.'
-      : storyFilter === 'published'
-        ? 'No published stories in this edition yet.'
-        : storyFilter === 'rejected'
-          ? 'No rejected stories in this edition.'
-          : 'No stories collected for this edition yet.';
+    editorialFilter === 'ready'
+      ? 'No stories ready to approve in this view.'
+      : editorialFilter === 'check'
+        ? 'No stories needing a check in this view.'
+        : editorialFilter === 'unverified'
+          ? 'No unverified stories in this view.'
+          : storyFilter === 'review'
+            ? 'No stories waiting for review.'
+            : storyFilter === 'published'
+              ? 'No published stories in this edition yet.'
+              : storyFilter === 'rejected'
+                ? 'No rejected stories in this edition.'
+                : 'No stories collected for this edition yet.';
 
   const missedRunNotice = useMemo(
     () => getMissedRunNotice(latestRunLog, today),
@@ -487,35 +527,68 @@ export function WorkbenchV3({
 
       {/* JOB 2: REVIEW & PUBLISH (TODAY'S EDITION) */}
       <View style={{ gap: V3_SPACE.lg }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: V3_SPACE.md,
-          }}
-        >
-          <V3Tabs
-            options={[
-              { id: 'all', label: `${todayItems.length} Collected` },
-              { id: 'review', label: `${counts.needsReview} To Review` },
-              { id: 'published', label: `${counts.published} Published` },
-              { id: 'rejected', label: `${counts.rejected} Rejected` },
-            ]}
-            value={storyFilter}
-            onChange={(next) => {
-              setStoryFilter(next);
-              if (editionTab !== 'stories') {
-                setEditionTab('stories');
-              }
+        <View style={{ gap: V3_SPACE.sm }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: V3_SPACE.md,
             }}
-          />
+          >
+            <V3Tabs
+              options={[
+                { id: 'all', label: `${todayItems.length} Collected` },
+                { id: 'review', label: `${counts.needsReview} To Review` },
+                { id: 'published', label: `${counts.published} Published` },
+                { id: 'rejected', label: `${counts.rejected} Rejected` },
+              ]}
+              value={storyFilter}
+              onChange={(next) => {
+                setStoryFilter(next);
+                setEditorialFilter('all');
+                if (editionTab !== 'stories') {
+                  setEditionTab('stories');
+                }
+              }}
+            />
+          </View>
+
+          {(storyFilter === 'all' || storyFilter === 'review') ? (
+            <V3Tabs
+              options={[
+                { id: 'all', label: `All (${statusFilteredStories.length})` },
+                {
+                  id: 'ready',
+                  label: `${editorialSubCounts.ready} Ready to approve`,
+                },
+                {
+                  id: 'check',
+                  label: `${editorialSubCounts.check} Needs a check`,
+                },
+                {
+                  id: 'unverified',
+                  label: `${editorialSubCounts.unverified} Could not verify`,
+                },
+              ]}
+              value={editorialFilter}
+              onChange={(next) => {
+                setEditorialFilter(next);
+                if (next !== 'all' && storyFilter !== 'review') {
+                  setStoryFilter('review');
+                }
+                if (editionTab !== 'stories') {
+                  setEditionTab('stories');
+                }
+              }}
+            />
+          ) : null}
         </View>
 
         {editionTab === 'stories' ? (
           <StoryReviewAccordion
-            key={`stories-${today}-${storyFilter}-${filteredStories.length}`}
+            key={`stories-${today}-${storyFilter}-${editorialFilter}-${filteredStories.length}`}
             stories={filteredStories}
             emptyLabel={storiesEmptyLabel}
             onViewDetails={onViewDetails}

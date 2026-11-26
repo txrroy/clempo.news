@@ -671,7 +671,7 @@ export default function ConsumerHomeScreen() {
               }}
               numberOfLines={1}
             >
-              Snappylit News
+              Clempo
             </Text>
           </View>
           <Text
@@ -1208,7 +1208,7 @@ export default function ConsumerHomeScreen() {
             onPress={() => {
               setMenuOpen(false);
               Linking.openURL(
-                `mailto:${APP_CONFIG.adminEmails[0]}?subject=Snappylit%20Support`
+                `mailto:${APP_CONFIG.adminEmails[0]}?subject=Clempo%20Support`
               );
             }}
           >

@@ -35,19 +35,15 @@ export const V3_COLORS = {
   disabledInk: '#8A877F',
 } as const;
 
+const ADMIN_FONT = Platform.select({
+  web: '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  default: 'Plus Jakarta Sans',
+});
+
 export const V3_FONTS = {
-  sans: Platform.select({
-    web: '"Work Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    default: 'Work Sans',
-  }),
-  display: Platform.select({
-    web: 'Newsreader, Georgia, "Times New Roman", serif',
-    default: 'Georgia',
-  }),
-  mono: Platform.select({
-    web: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-    default: 'Courier',
-  }),
+  sans: ADMIN_FONT,
+  display: ADMIN_FONT,
+  mono: ADMIN_FONT,
 } as const;
 
 export const V3_TYPE: Record<

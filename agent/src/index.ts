@@ -56,7 +56,7 @@ async function runPipeline() {
   const instructionsSnapshot = buildInstructionsSnapshot(activePolicy);
 
   console.log(
-    `[${today}] Starting SnappyLit agent pipeline (policy ${activePolicy.active_version}, ${sources.filter((s) => s.enabled).length} enabled sources)...`
+    `[${today}] Starting Clempo agent pipeline (policy ${activePolicy.active_version}, ${sources.filter((s) => s.enabled).length} enabled sources)...`
   );
 
   // Agent 1: Fetch all enabled RSS feeds, dedupe events, select top 20 by global impact, and scrape full text

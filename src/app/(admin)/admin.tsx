@@ -178,7 +178,7 @@ export default function AdminDashboardScreen() {
             }}
           >
             <V3Text role="headline" weight="700">
-              SnappyLit
+              Clempo
             </V3Text>
 
             <View

@@ -1155,7 +1155,7 @@ export async function handleAgentChat(
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `You are ${roleDesc} for the SnappyLit newsroom.
+      contents: `You are ${roleDesc} for the Clempo newsroom.
 Current active policy (${activePolicy.active_version}): reading level ${activePolicy.settings.reading_level}, ~${activePolicy.settings.target_summary_words} words, tone ${activePolicy.settings.tone}.
 Tier 2 instructions: "${activePolicy.admin_instructions || 'None'}".
 

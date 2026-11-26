@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 845 1000" role="img" aria-label="Clempo logo">
+  <title>Clempo</title>
+
+  <!-- Orange back wings and beak -->
+  <g fill="#E39223">
+    <polygon points="72,8 508,358 132,148"/>
+    <polygon points="410,736 236,846 234,992"/>
+    <polygon points="688,282 836,387 678,388"/>
+  </g>
+
+  <!-- Teal front wings and head -->
+  <g fill="#14505C" stroke="#14505C" stroke-width="1.5" stroke-linejoin="round">
+    <polygon points="5,80 508,360 305,580"/>
+    <polygon points="530,388 688,282 678,388 648,584"/>
+    <polygon points="305,580 648,584 95,928"/>
+  </g>
+
+  <!-- Dark teal body fold -->
+  <polygon points="508,360 530,388 648,584 305,580" fill="#0F3D47" stroke="#0F3D47" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

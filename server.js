@@ -92,5 +92,5 @@ app.use((_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`SnappyLit web server listening on port ${PORT}`);
+  console.log(`Clempo web server listening on port ${PORT}`);
 });

@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { TopicPatternBanner } from '@/components/consumer/TopicPatternBanner';
 import {
   acceptRegeneratedDraft,
   LOCKED_CORE_SUMMARY,
@@ -344,7 +345,6 @@ function StoryDetailContent({
     Boolean(article.source_checked)
   );
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showReaderPreview, setShowReaderPreview] = useState(false);
   const [showRevisions, setShowRevisions] = useState(false);
 
   const unsupportedClaims = useMemo(
@@ -719,12 +719,6 @@ function StoryDetailContent({
               size="sm"
               onPress={() => Linking.openURL(article.original_url)}
             />
-            <V3Button
-              label={showReaderPreview ? 'Back to Editor' : 'Preview as Reader'}
-              variant={showReaderPreview ? 'dark' : 'outline'}
-              size="sm"
-              onPress={() => setShowReaderPreview((v) => !v)}
-            />
             <V3Badge label={statusBadge.label} tone={statusBadge.tone} />
             {article.sensitive ? (
               <V3Badge label="SENSITIVE" tone="neutral" />
@@ -836,175 +830,216 @@ function StoryDetailContent({
       <ScrollView
         style={{ flex: 1, minHeight: 0 }}
         contentContainerStyle={{
-          maxWidth: 1180,
+          maxWidth: 1240,
           width: '100%',
           alignSelf: 'center',
           paddingHorizontal: V3_SPACE.xxl,
           paddingVertical: V3_SPACE.xl,
           paddingBottom: V3_SPACE.xxl * 2,
-          gap: V3_SPACE.xl,
         }}
       >
-        {showReaderPreview ? (
-          <V3Card
-            variant="outlined"
-            padding="lg"
-            style={{
-              maxWidth: 680,
-              width: '100%',
-              alignSelf: 'center',
-              gap: V3_SPACE.md,
-              backgroundColor: V3_COLORS.surface,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: V3_SPACE.sm,
-              }}
-            >
-              <V3Badge label="READER PREVIEW · LIVE DRAFT" tone="approved" />
-              <V3Text role="mono" tone="muted">
-                {formatEditionDate(article.date, 'short')}
-                {article.topic ? ` · ${article.topic.toUpperCase()}` : ''}
-              </V3Text>
-            </View>
-
-            {article.image_url ? (
-              <Image
-                source={{ uri: article.image_url }}
-                style={{
-                  width: '100%',
-                  height: 240,
-                  borderRadius: V3_RADII.control,
-                  backgroundColor: V3_COLORS.surfaceWell,
-                }}
-                contentFit="cover"
-              />
-            ) : null}
-
-            <V3Text role="title">{headline}</V3Text>
-
-            <View style={{ gap: V3_SPACE.sm }}>
-              {splitSummaryIntoPoints(summary).map((point, idx) => (
-                <View
-                  key={idx}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    gap: V3_SPACE.sm,
-                  }}
-                >
-                  <V3Text role="body" tone="accent" weight="700">
-                    •
-                  </V3Text>
-                  <V3Text role="body" style={{ flex: 1 }}>
-                    {point}
-                  </V3Text>
-                </View>
-              ))}
-            </View>
-
-            {article.ai_explanation ? (
-              <View
-                style={{
-                  backgroundColor: V3_COLORS.surfaceWell,
-                  borderLeftWidth: 3,
-                  borderLeftColor: V3_COLORS.accent,
-                  paddingHorizontal: V3_SPACE.md,
-                  paddingVertical: V3_SPACE.sm,
-                  gap: 4,
-                }}
-              >
-                <V3Text role="kicker" tone="muted">
-                  BACKGROUND CONTEXT
-                </V3Text>
-                <V3Text role="body" tone="muted">
-                  {article.ai_explanation}
-                </V3Text>
-              </View>
-            ) : null}
-
-            <V3Rule />
-
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: V3_SPACE.sm,
-              }}
-            >
-              <V3Text role="mono" tone="muted">
-                SOURCE: {getSourceLabel(article) || 'Original source'}
-              </V3Text>
-              <V3Button
-                label="Open source link ↗"
-                variant="outline"
-                size="sm"
-                onPress={() => Linking.openURL(article.original_url)}
-              />
-            </View>
-          </V3Card>
-        ) : null}
-
-        {/* 1. Headline First */}
-        <View style={{ gap: V3_SPACE.xs }}>
-          <V3Text role="mono" tone="muted">
-            {article.date}
-            {article.topic ? ` · ${article.topic.toUpperCase()}` : ''}
-            {article.region ? ` · ${article.region.toUpperCase()}` : ''}
-            {article.source_names?.length
-              ? ` · ${article.source_names.join(', ')}`
-              : ''}
-          </V3Text>
-
+        <View
+          style={{
+            flexDirection: isWideSplit ? 'row' : 'column',
+            alignItems: 'flex-start',
+            gap: V3_SPACE.xl,
+          }}
+        >
+          {/* LEFT COLUMN: Mobile News Card (Front + HR + Back, no flipping) */}
           <View
             style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: V3_SPACE.md,
+              width: isWideSplit ? 380 : '100%',
+              maxWidth: isWideSplit ? 380 : 480,
+              alignSelf: isWideSplit ? 'flex-start' : 'center',
+              backgroundColor: V3_COLORS.surface,
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: V3_COLORS.border,
+              overflow: 'hidden',
             }}
           >
-            <View style={{ flex: 1, minWidth: 260 }}>
+            {/* Card Hero Image / Topic Banner */}
+            <View style={{ height: 180, width: '100%', backgroundColor: V3_COLORS.surfaceWell }}>
+              {article.image_url ? (
+                <Image
+                  source={{ uri: article.image_url }}
+                  style={{ width: '100%', height: '100%' }}
+                  contentFit="cover"
+                />
+              ) : (
+                <TopicPatternBanner topic={article.topic} />
+              )}
+            </View>
+
+            {/* Card Front Contents */}
+            <View style={{ padding: V3_SPACE.xl, gap: V3_SPACE.md }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: V3_SPACE.sm,
+                }}
+              >
+                <V3Text role="kicker" tone="accent" style={{ flex: 1 }}>
+                  {article.topic ? article.topic.toUpperCase() : 'NEWS'} ·{' '}
+                  {formatEditionDate(article.date, 'short').toUpperCase()}
+                </V3Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: V3_SPACE.xs }}>
+                  {isDirty ? (
+                    <V3Badge label="UNSAVED" tone="pending" />
+                  ) : null}
+                  <V3Button
+                    label={editingDraftText ? 'Done' : 'Edit text'}
+                    variant="outline"
+                    size="sm"
+                    onPress={() => setEditingDraftText((v) => !v)}
+                  />
+                </View>
+              </View>
+
               {editingDraftText ? (
                 <V3Input
                   value={headline}
                   onChangeText={setHeadline}
                   multiline
-                  style={[V3_TYPE.title, { minHeight: 54 }]}
+                  style={[V3_TYPE.section, { minHeight: 54 }]}
                 />
               ) : (
-                <V3Text role="title">{headline}</V3Text>
+                <V3Text role="section">{headline}</V3Text>
+              )}
+
+              {editingDraftText ? (
+                <V3Input
+                  value={summary}
+                  onChangeText={setSummary}
+                  multiline
+                  textAlignVertical="top"
+                  style={{ minHeight: 200 }}
+                />
+              ) : (
+                <View style={{ gap: V3_SPACE.xs }}>
+                  {sentenceMappings.map((item) => {
+                    const isSelected = selectedSentenceIdx === item.idx;
+                    const isFlagged = item.status !== 'supported';
+                    return (
+                      <Pressable
+                        key={item.idx}
+                        onPress={() => setSelectedSentenceIdx(item.idx)}
+                        style={{
+                          paddingHorizontal: V3_SPACE.sm,
+                          paddingVertical: V3_SPACE.xs + 2,
+                          borderLeftWidth: 2,
+                          borderLeftColor: isSelected
+                            ? item.status === 'unsupported'
+                              ? V3_COLORS.danger
+                              : V3_COLORS.accent
+                            : item.status === 'unsupported'
+                              ? V3_COLORS.danger
+                              : 'transparent',
+                          backgroundColor:
+                            item.status === 'unsupported'
+                              ? V3_COLORS.dangerSoft
+                              : isSelected
+                                ? V3_COLORS.accentSoft
+                                : 'transparent',
+                          ...(Platform.OS === 'web'
+                            ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                            : {}),
+                        }}
+                      >
+                        <V3Text
+                          role="body"
+                          weight={isSelected ? '500' : '400'}
+                        >
+                          {item.sentence}
+                        </V3Text>
+                        {isFlagged ? (
+                          <View style={{ marginTop: V3_SPACE.xs }}>
+                            <V3Badge
+                              label={
+                                item.status === 'unsupported'
+                                  ? 'UNSUPPORTED IN SOURCE'
+                                  : 'SNIPPET ONLY'
+                              }
+                              tone={
+                                item.status === 'unsupported'
+                                  ? 'rejected'
+                                  : 'pending'
+                              }
+                            />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               )}
             </View>
 
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: V3_SPACE.sm,
-              }}
-            >
-              {isDirty ? (
-                <V3Badge label="UNSAVED EDITS" tone="pending" />
-              ) : null}
-              <V3Button
-                label={editingDraftText ? 'Done editing' : 'Edit text'}
-                variant="outline"
-                size="sm"
-                onPress={() => setEditingDraftText((v) => !v)}
-              />
+            {/* Horizontal Rule dividing Front and Back */}
+            <V3Rule strong />
+
+            {/* Card Back Contents (Why It Matters + Source) */}
+            <View style={{ padding: V3_SPACE.xl, gap: V3_SPACE.md }}>
+              <V3Text role="kicker" tone="muted">
+                WHY IT MATTERS
+              </V3Text>
+
+              {article.ai_explanation ? (
+                <View style={{ gap: V3_SPACE.xs }}>
+                  {splitSummaryIntoPoints(article.ai_explanation).map(
+                    (point, idx) => (
+                      <View
+                        key={idx}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                          gap: V3_SPACE.sm,
+                        }}
+                      >
+                        <V3Text role="body" tone="accent" weight="700">
+                          •
+                        </V3Text>
+                        <V3Text role="body" tone="muted" style={{ flex: 1 }}>
+                          {point}
+                        </V3Text>
+                      </View>
+                    )
+                  )}
+                </View>
+              ) : (
+                <V3Text role="body" tone="subtle">
+                  No background context generated for this story.
+                </V3Text>
+              )}
+
+              <V3Rule />
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: V3_SPACE.sm,
+                }}
+              >
+                <V3Text role="mono" tone="muted">
+                  SOURCE: {getSourceLabel(article) || 'Original source'}
+                </V3Text>
+                <V3Button
+                  label="Open source ↗"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => Linking.openURL(article.original_url)}
+                />
+              </View>
             </View>
           </View>
-        </View>
 
-        <V3Rule strong />
+          {/* RIGHT COLUMN: Everything Else (Triage, Source Text, Verifier Checks, Revisions) */}
+          <View style={{ flex: 1, minWidth: 0, width: '100%', gap: V3_SPACE.lg }}>
 
         {/* 2. Triage Strip & Live Agent Actions (Filled well, never nested cards) */}
         <V3Card
@@ -1439,193 +1474,68 @@ function StoryDetailContent({
           ) : null}
         </V3Card>
 
-        {/* 3. Unified Split Reading Desk (Filled Card Only — No Borders) */}
-        <V3Card variant="filled" padding="xs" style={{ padding: 0 }}>
+        {/* Source Text Card */}
+        <V3Card variant="filled" padding="lg" style={{ gap: V3_SPACE.md }}>
           <View
             style={{
-              flexDirection: isWideSplit ? 'row' : 'column',
-              alignItems: 'stretch',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            {/* Left Column: Summary */}
-            <View
-              style={{
-                flex: isWideSplit ? 4 : 1,
-                padding: V3_SPACE.xl,
-                gap: V3_SPACE.md,
-                borderRightWidth: isWideSplit ? 1 : 0,
-                borderBottomWidth: isWideSplit ? 0 : 1,
-                borderColor: V3_COLORS.border,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <V3Text role="kicker">SUMMARY</V3Text>
-                {!editingDraftText ? (
-                  <V3Text role="mono" tone="subtle">
-                    CLICK SENTENCE TO MATCH QUOTE
-                  </V3Text>
-                ) : null}
-              </View>
-
-              {editingDraftText ? (
-                <V3Input
-                  value={summary}
-                  onChangeText={setSummary}
-                  multiline
-                  textAlignVertical="top"
-                  style={{ minHeight: 220 }}
-                />
-              ) : (
-                <View style={{ gap: V3_SPACE.xs }}>
-                  {sentenceMappings.map((item) => {
-                    const isSelected = selectedSentenceIdx === item.idx;
-                    const isFlagged = item.status !== 'supported';
-                    return (
-                      <Pressable
-                        key={item.idx}
-                        onPress={() => setSelectedSentenceIdx(item.idx)}
-                        style={{
-                          paddingHorizontal: V3_SPACE.md,
-                          paddingVertical: V3_SPACE.sm,
-                          borderLeftWidth: 2,
-                          borderLeftColor: isSelected
-                            ? item.status === 'unsupported'
-                              ? V3_COLORS.danger
-                              : V3_COLORS.accent
-                            : item.status === 'unsupported'
-                              ? V3_COLORS.danger
-                              : 'transparent',
-                          backgroundColor:
-                            item.status === 'unsupported'
-                              ? V3_COLORS.dangerSoft
-                              : isSelected
-                                ? V3_COLORS.accentSoft
-                                : 'transparent',
-                          ...(Platform.OS === 'web'
-                            ? ({ cursor: 'pointer' } as Record<
-                                string,
-                                unknown
-                              >)
-                            : {}),
-                        }}
-                      >
-                        <V3Text
-                          role="body"
-                          weight={isSelected ? '500' : '400'}
-                        >
-                          {item.sentence}
-                        </V3Text>
-                        {isFlagged ? (
-                          <View style={{ marginTop: V3_SPACE.xs }}>
-                            <V3Badge
-                              label={
-                                item.status === 'unsupported'
-                                  ? 'UNSUPPORTED IN SOURCE'
-                                  : 'SNIPPET ONLY'
-                              }
-                              tone={
-                                item.status === 'unsupported'
-                                  ? 'rejected'
-                                  : 'pending'
-                              }
-                            />
-                          </View>
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-
-              {article.ai_explanation ? (
-                <>
-                  <V3Rule />
-                  <View style={{ gap: V3_SPACE.xs }}>
-                    <V3Text role="kicker">WHY IT MATTERS</V3Text>
-                    <V3Text role="body" tone="muted">
-                      {article.ai_explanation}
-                    </V3Text>
-                  </View>
-                </>
-              ) : null}
-            </View>
-
-            {/* Right Column: Source Text */}
-            <View
-              style={{
-                flex: isWideSplit ? 6 : 1,
-                padding: V3_SPACE.xl,
-                gap: V3_SPACE.md,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <V3Text role="kicker">SOURCE TEXT</V3Text>
-                <V3Text role="mono" tone="subtle">
-                  {snippetUnverified
-                    ? 'FALLBACK RSS SNIPPET'
-                    : 'EXTRACTED PUBLISHER TEXT'}
-                </V3Text>
-              </View>
-
-              {activeMapping?.status === 'unsupported' ? (
-                <V3Text role="body" tone="danger" weight="600">
-                  No direct quote found in the source text for the selected
-                  sentence.
-                </V3Text>
-              ) : null}
-
-              <ScrollView
-                showsVerticalScrollIndicator
-                nestedScrollEnabled
-                style={{ maxHeight: 460 }}
-                contentContainerStyle={{ gap: V3_SPACE.sm }}
-              >
-                {sourceSegments.length === 0 ? (
-                  <V3Text role="body" tone="muted">
-                    No source text stored for this story. Click &ldquo;Open source
-                    ↗&rdquo; above to read the original article.
-                  </V3Text>
-                ) : (
-                  sourceSegments.map((seg, idx) => (
-                    <View
-                      key={idx}
-                      style={{
-                        paddingHorizontal: seg.highlighted ? V3_SPACE.md : 0,
-                        paddingVertical: seg.highlighted ? V3_SPACE.xs : 0,
-                        backgroundColor: seg.highlighted
-                          ? V3_COLORS.accentSoft
-                          : 'transparent',
-                        borderLeftWidth: seg.highlighted ? 2 : 0,
-                        borderLeftColor: seg.highlighted
-                          ? V3_COLORS.accent
-                          : 'transparent',
-                      }}
-                    >
-                      <V3Text
-                        role="body"
-                        weight={seg.highlighted ? '600' : '400'}
-                        tone={seg.highlighted ? 'ink' : 'muted'}
-                      >
-                        {seg.text}
-                      </V3Text>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-            </View>
+            <V3Text role="kicker">SOURCE TEXT</V3Text>
+            <V3Text role="mono" tone="subtle">
+              {snippetUnverified
+                ? 'FALLBACK RSS SNIPPET'
+                : 'EXTRACTED PUBLISHER TEXT'}
+            </V3Text>
           </View>
+
+          {activeMapping?.status === 'unsupported' ? (
+            <V3Text role="body" tone="danger" weight="600">
+              No direct quote found in the source text for the selected
+              sentence.
+            </V3Text>
+          ) : null}
+
+          <ScrollView
+            showsVerticalScrollIndicator
+            nestedScrollEnabled
+            style={{ maxHeight: 380 }}
+            contentContainerStyle={{ gap: V3_SPACE.sm }}
+          >
+            {sourceSegments.length === 0 ? (
+              <V3Text role="body" tone="muted">
+                No source text stored for this story. Click &ldquo;Open source
+                ↗&rdquo; above to read the original article.
+              </V3Text>
+            ) : (
+              sourceSegments.map((seg, idx) => (
+                <View
+                  key={idx}
+                  style={{
+                    paddingHorizontal: seg.highlighted ? V3_SPACE.md : 0,
+                    paddingVertical: seg.highlighted ? V3_SPACE.xs : 0,
+                    backgroundColor: seg.highlighted
+                      ? V3_COLORS.accentSoft
+                      : 'transparent',
+                    borderLeftWidth: seg.highlighted ? 2 : 0,
+                    borderLeftColor: seg.highlighted
+                      ? V3_COLORS.accent
+                      : 'transparent',
+                  }}
+                >
+                  <V3Text
+                    role="body"
+                    weight={seg.highlighted ? '600' : '400'}
+                    tone={seg.highlighted ? 'ink' : 'muted'}
+                  >
+                    {seg.text}
+                  </V3Text>
+                </View>
+              ))
+            )}
+          </ScrollView>
         </V3Card>
 
         {/* 4. Compact Judge Checks & Trace Strip (Outlined Card Only) */}
@@ -1899,6 +1809,8 @@ function StoryDetailContent({
             </V3Text>
           </V3Card>
         ) : null}
+          </View>
+        </View>
       </ScrollView>
     </View>
   );

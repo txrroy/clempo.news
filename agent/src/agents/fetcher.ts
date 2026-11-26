@@ -14,7 +14,7 @@ import type {
 const rssParser = new Parser({
   timeout: PIPELINE_CONFIG.fetchTimeoutMs,
   headers: {
-    'User-Agent': 'SnappyLitNewsBot/1.0 (+https://snappylit.com)',
+    'User-Agent': 'ClempoNewsBot/1.0 (+https://clempo.news)',
   },
 });
 

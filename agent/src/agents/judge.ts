@@ -120,6 +120,8 @@ export async function judgeArticle(
     }
     if (article.usedFallbackSnippet) {
       flagSet.add('SNIPPET_ONLY');
+    } else {
+      flagSet.delete('SNIPPET_ONLY');
     }
 
     const claims: JudgeClaim[] = (parsed.claims || [])

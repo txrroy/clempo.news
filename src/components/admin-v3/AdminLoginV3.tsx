@@ -89,7 +89,7 @@ export function AdminLoginV3({
           <V3Text role="kicker" tone="accent">
             EDITORIAL DESK
           </V3Text>
-          <V3Text role="title">SnappyLit Studio</V3Text>
+          <V3Text role="title">Clempo Studio</V3Text>
           <V3Text role="body" tone="muted">
             Sign in to collect news, review drafts, and publish editions.
           </V3Text>
@@ -109,7 +109,7 @@ export function AdminLoginV3({
             <V3Input
               value={email}
               onChangeText={setEmail}
-              placeholder="editor@snappylit.com"
+              placeholder="editor@clempo.com"
               autoCapitalize="none"
               keyboardType="email-address"
             />
