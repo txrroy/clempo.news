@@ -17,6 +17,7 @@ import type { Article } from '@/types/article';
 import { Image } from 'expo-image';
 import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -48,7 +49,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BookmarkIcon } from './BookmarkIcon';
 import { ThumbIcon } from './ThumbIcon';
-import { TopicIcon } from './TopicIcon';
 import { CoverPatternArt, TopicPatternBanner } from './TopicPatternBanner';
 
 interface SwipeCardDeckProps {
@@ -481,7 +481,7 @@ interface EditionCoverMeta {
 
 /**
  * Calm pastel opening cover card for Today's Edition showing a readable date,
- * time estimate, preview of today's topics, anti-doomscrolling boundary, and editor credit.
+ * time estimate, anti-doomscrolling boundary, prominent swipe-up cue, and editor credit.
  */
 function EditionCoverContent({
   article,
@@ -500,12 +500,54 @@ function EditionCoverContent({
     ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
     : {};
   const fullDate = formatEditionDate(article.date, 'full');
-  const { storyCount, readMinutes, topics, editedAgoText } = editionMeta;
-  const previewTopics = topics.slice(0, 6);
-  const estimateLine = `${storyCount} ${storyCount === 1 ? 'story' : 'stories'}. About ${readMinutes} ${readMinutes === 1 ? 'minute' : 'minutes'}.`;
+  const { storyCount, readMinutes, editedAgoText } = editionMeta;
+  const estimateLine = `${storyCount} ${storyCount === 1 ? 'story' : 'stories'} today. About ${readMinutes} ${readMinutes === 1 ? 'minute' : 'minutes'}.`;
   const editorCredit = editedAgoText
-    ? `Edited by Tushar Roy, ${editedAgoText}`
-    : 'Edited by Tushar Roy';
+    ? `Today's News Edited by Tushar Roy, ${editedAgoText}`
+    : "Today's News Edited by Tushar Roy";
+
+  const swipeCueContent = (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: '#1C1917',
+        paddingVertical: compact ? 13 : 15,
+        paddingHorizontal: compact ? 24 : 28,
+        borderRadius: 999,
+        shadowColor: '#1C1917',
+        shadowOpacity: 0.16,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+      }}
+    >
+      <Text
+        style={{
+          ...sansStyle,
+          fontSize: scaleFont(17, fontScale),
+          fontWeight: '700',
+          color: '#FAF9F6',
+          lineHeight: scaleFont(20, fontScale),
+        }}
+      >
+        ↑
+      </Text>
+      <Text
+        style={{
+          ...sansStyle,
+          fontSize: scaleFont(16, fontScale),
+          fontWeight: '600',
+          color: '#FAF9F6',
+          letterSpacing: -0.1,
+        }}
+      >
+        Swipe up to read
+      </Text>
+    </View>
+  );
 
   return (
     <View
@@ -552,20 +594,31 @@ function EditionCoverContent({
         </Text>
 
         {storyCount > 0 ? (
-          <Text
-            className="text-center"
-            style={{
-              ...getNewsFontStyle('500'),
-              fontSize: scaleFont(15.5, fontScale),
-              lineHeight: scaleFont(22, fontScale),
-              color: '#57534E',
-            }}
-          >
-            {estimateLine}{' '}
-            <Text style={{ color: '#0F766E', ...getNewsFontStyle('600') }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text
+              className="text-center"
+              style={{
+                ...getNewsFontStyle('500'),
+                fontSize: scaleFont(15.5, fontScale),
+                lineHeight: scaleFont(22, fontScale),
+                color: '#57534E',
+              }}
+            >
+              {estimateLine}
+            </Text>
+            <Text
+              className="text-center"
+              style={{
+                ...getNewsFontStyle('600'),
+                fontSize: scaleFont(15.5, fontScale),
+                lineHeight: scaleFont(22, fontScale),
+                color: '#0F766E',
+                marginTop: Math.round(4 * fontScale),
+              }}
+            >
               No doomscrolling.
             </Text>
-          </Text>
+          </View>
         ) : (
           <Text
             className="text-center"
@@ -581,135 +634,38 @@ function EditionCoverContent({
         )}
       </View>
 
-      {/* Topic Icons Preview of Today's Edition */}
-      {previewTopics.length > 0 ? (
-        <View
-          style={{
-            width: '100%',
-            maxWidth: 300,
-            alignItems: 'center',
-            marginVertical: Math.round(8 * fontScale),
-          }}
-        >
-          <Text
-            style={{
-              ...sansStyle,
-              fontSize: scaleFont(11, fontScale),
-              fontWeight: '600',
-              letterSpacing: 0.8,
-              color: '#78716C',
-              marginBottom: Math.round(12 * fontScale),
-            }}
-          >
-            IN TODAY&apos;S EDITION
-          </Text>
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              justifyContent: 'center',
-              columnGap: 14,
-              rowGap: Math.round(12 * fontScale),
-            }}
-          >
-            {previewTopics.map((topicName) => {
-              const visual = getTopicVisual(topicName);
-              const iconColor = visual?.color ?? '#0D9488';
-              const tileBg = visual?.lightBg ?? '#F5F5F4';
-              const iconName = visual?.icon ?? 'default';
-              return (
-                <View
-                  key={topicName}
-                  style={{
-                    width: 80,
-                    alignItems: 'center',
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 13,
-                      backgroundColor: tileBg,
-                      borderWidth: 1,
-                      borderColor: 'rgba(28, 25, 23, 0.06)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: 5,
-                    }}
-                  >
-                    <TopicIcon name={iconName} color={iconColor} size={18} />
-                  </View>
-                  <Text
-                    style={{
-                      ...sansStyle,
-                      fontSize: scaleFont(11.5, fontScale),
-                      fontWeight: '600',
-                      color: '#44403C',
-                      textAlign: 'center',
-                    }}
-                    numberOfLines={1}
-                  >
-                    {topicName}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
-      {/* Quiet Editorial Start Cue + Editor Credit */}
-      <View style={{ alignItems: 'center' }}>
+      {/* Center Swipe Up Cue */}
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
         {onStart ? (
           <Pressable
             onPress={(e) => {
               e.stopPropagation?.();
               onStart();
             }}
-            accessibilityLabel="Start today's edition"
+            accessibilityLabel="Swipe up or tap to start today's edition"
             hitSlop={12}
-            className="active:opacity-50"
+            className="active:opacity-75"
             style={{
-              paddingVertical: 4,
-              paddingHorizontal: 8,
               ...(Platform.OS === 'web'
                 ? ({ cursor: 'pointer' } as Record<string, unknown>)
                 : {}),
             }}
           >
-            <Text
-              style={{
-                ...sansStyle,
-                fontSize: scaleFont(15.5, fontScale),
-                fontWeight: '600',
-                color: '#1C1917',
-                letterSpacing: -0.1,
-              }}
-            >
-              Let&apos;s go →
-            </Text>
+            {swipeCueContent}
           </Pressable>
         ) : (
-          <Text
-            style={{
-              ...sansStyle,
-              fontSize: scaleFont(15.5, fontScale),
-              fontWeight: '600',
-              color: '#1C1917',
-              letterSpacing: -0.1,
-            }}
-          >
-            Let&apos;s go →
-          </Text>
+          swipeCueContent
         )}
+      </View>
+
+      {/* Editor Credit Footer */}
+      <View style={{ alignItems: 'center' }}>
         <Text
           style={{
             ...sansStyle,
             fontSize: scaleFont(11.5, fontScale),
             color: '#78716C',
             textAlign: 'center',
-            marginTop: Math.round(10 * fontScale),
           }}
         >
           {editorCredit}
@@ -1265,6 +1221,19 @@ function DeckSlotCard({
     }
 
     if (cardIndex === activeIdx + 1) {
+      if (Platform.OS === 'web') {
+        return {
+          opacity: 0.96,
+          zIndex: 2,
+          elevation: 2,
+          transform: [
+            { translateX: 0 },
+            { translateY: -6 },
+            { rotate: '0deg' },
+            { scaleX: 0.94 },
+          ],
+        };
+      }
       const forwardDist = Math.max(
         0,
         Math.abs(translateX.value),
@@ -1293,6 +1262,19 @@ function DeckSlotCard({
     }
 
     if (cardIndex === activeIdx + 2) {
+      if (Platform.OS === 'web') {
+        return {
+          opacity: 0.92,
+          zIndex: 1,
+          elevation: 1,
+          transform: [
+            { translateX: 0 },
+            { translateY: -12 },
+            { rotate: '0deg' },
+            { scaleX: 0.88 },
+          ],
+        };
+      }
       const forwardDist = Math.max(
         0,
         Math.abs(translateX.value),
@@ -1348,6 +1330,7 @@ function DeckSlotCard({
             ? ({
               touchAction: 'none',
               userSelect: 'none',
+              willChange: 'transform, opacity',
             } as Record<string, unknown>)
             : {}),
         },
@@ -1363,7 +1346,7 @@ function DeckSlotCard({
  * Keeping per-card `imageTier` and `imageLoadFailed` local prevents layout shifts when a
  * peeking card promotes to the active slot.
  */
-function ArticleDeckCard({
+const ArticleDeckCard = memo(function ArticleDeckCard({
   article,
   cardIndex,
   totalArticles,
@@ -1520,11 +1503,10 @@ function ArticleDeckCard({
   );
 
   const cardFrontFaceStyle = useAnimatedStyle(() => {
-    if (cardIndex !== activeIdxSV.value) {
+    if (cardIndex !== activeIdxSV.value || flipProgress.value === 0) {
       return {
         opacity: 1,
-        transform: [{ perspective: 1200 }, { rotateY: '0deg' }],
-        backfaceVisibility: 'hidden' as const,
+        transform: [],
       };
     }
     const rotateY = interpolate(flipProgress.value, [0, 1], [0, 180]);
@@ -2024,7 +2006,11 @@ function ArticleDeckCard({
             borderWidth: Platform.OS === 'web' ? 0 : 1,
             borderColor: 'rgba(28, 25, 23, 0.08)',
             boxShadow:
-              '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
+              Platform.OS === 'web'
+                ? isActive
+                  ? '0 8px 20px -4px rgba(28, 25, 23, 0.15), 0 0 0 1px rgba(28, 25, 23, 0.08)'
+                  : '0 0 0 1px rgba(28, 25, 23, 0.08)'
+                : '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
             shadowColor: '#1C1917',
             shadowOpacity: 0.1,
             shadowRadius: 24,
@@ -2036,8 +2022,8 @@ function ArticleDeckCard({
         {frontContent}
       </Animated.View>
 
-      {/* BACK FACE (mounted for non-cover cards so backScrollGesture never unmounts independently; seeded opacity: 0) */}
-      {!isCover ? (
+      {/* BACK FACE (mounted only on active non-cover card so peeking cards avoid duplicate 3D DOM/shadow layers) */}
+      {!isCover && isActive ? (
         <Animated.View
           pointerEvents={isActive && isFlipped ? 'auto' : 'none'}
           style={[
@@ -2362,7 +2348,7 @@ function ArticleDeckCard({
       </View>
     </GestureDetector>
   );
-}
+});
 
 export function SwipeCardDeck({
   articles,
@@ -3126,7 +3112,7 @@ export function SwipeCardDeck({
                   onVote={handleArticleVote}
                   onToggleSave={handleToggleSave}
                   contextFeedback={contextFeedbackByArticle[article.id]}
-                  contextNoteText={contextNoteText}
+                  contextNoteText={isActiveCard ? contextNoteText : ''}
                   onChangeContextNoteText={setContextNoteText}
                   contextNoteInputRef={contextNoteInputRef}
                   sendingContextNote={sendingContextNote}
@@ -3166,7 +3152,11 @@ export function SwipeCardDeck({
                   borderWidth: Platform.OS === 'web' ? 0 : 1,
                   borderColor: 'rgba(28, 25, 23, 0.08)',
                   boxShadow:
-                    '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
+                    Platform.OS === 'web'
+                      ? isCaughtUpActive
+                        ? '0 8px 20px -4px rgba(28, 25, 23, 0.15), 0 0 0 1px rgba(28, 25, 23, 0.08)'
+                        : '0 0 0 1px rgba(28, 25, 23, 0.08)'
+                      : '0 10px 26px -4px rgba(28, 25, 23, 0.18), 0 2px 6px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.08)',
                   shadowColor: '#1C1917',
                   shadowOpacity: 0.1,
                   shadowRadius: 24,
