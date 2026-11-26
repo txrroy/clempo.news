@@ -1,4 +1,10 @@
 import {
+  BricolageGrotesque_400Regular,
+  BricolageGrotesque_500Medium,
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
+} from '@expo-google-fonts/bricolage-grotesque';
+import {
   Newsreader_400Regular,
   Newsreader_400Regular_Italic,
   Newsreader_500Medium,
@@ -19,17 +25,17 @@ const FONT_STYLESHEETS: { id: string; href: string }[] = [
     href: 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&display=swap',
   },
   {
-    id: 'inter-font',
-    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  },
-  {
-    id: 'plus-jakarta-sans-font',
-    href: 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap',
+    id: 'bricolage-grotesque-font',
+    href: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap',
   },
 ];
 
 export default function RootLayout() {
   useFonts({
+    BricolageGrotesque_400Regular,
+    BricolageGrotesque_500Medium,
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
     Newsreader_400Regular,
     Newsreader_400Regular_Italic,
     Newsreader_500Medium,

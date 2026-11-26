@@ -28,8 +28,8 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** System sans (SF Pro) */
-    sans: undefined,
+    /** Bricolage Grotesque sans */
+    sans: 'BricolageGrotesque_400Regular',
     /** News editorial serif */
     serif: 'Newsreader_400Regular',
     /** iOS `UIFontDescriptorSystemDesignRounded` */
@@ -38,15 +38,15 @@ export const Fonts = Platform.select({
     mono: 'ui-monospace',
   },
   default: {
-    /** System sans (Roboto on Android) */
-    sans: undefined,
+    /** Bricolage Grotesque sans */
+    sans: 'BricolageGrotesque_400Regular',
     /** News editorial serif */
     serif: 'Newsreader_400Regular',
     rounded: 'normal',
     mono: 'monospace',
   },
   web: {
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+    sans: "'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
     serif: "'Newsreader', Georgia, Cambria, 'Times New Roman', serif",
     rounded: 'var(--font-rounded)',
     mono: 'var(--font-mono)',

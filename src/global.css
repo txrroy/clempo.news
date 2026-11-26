@@ -4,10 +4,10 @@
 
 :root {
   --font-display:
-    'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif, Apple Color Emoji,
+    'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif, Apple Color Emoji,
     Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-rounded: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-rounded: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-serif: 'Newsreader', Georgia, Cambria, 'Times New Roman', serif;
 }
 
@@ -16,9 +16,9 @@ body {
 }
 
 .consumer-mobile-reader {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 .consumer-display {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }

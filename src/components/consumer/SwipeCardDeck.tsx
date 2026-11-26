@@ -116,8 +116,8 @@ function ArticleSummaryPoints({
   const sansStyle = Fonts?.sans
     ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
     : {};
-  const sectionLabelSize = scaleFont(13.5, fontScale);
-  const sectionLabelLine = scaleFont(compact ? 17 : 18, fontScale);
+  const sectionLabelSize = scaleFont(12.5, fontScale);
+  const sectionLabelLine = scaleFont(compact ? 16 : 17, fontScale);
   const leadFontSize = scaleFont(15, fontScale);
   const leadLineHeight = scaleFont(compact ? 20.5 : 22, fontScale);
   const bulletFontSize = scaleFont(14.5, fontScale);
@@ -135,8 +135,8 @@ function ArticleSummaryPoints({
           ...sansStyle,
           fontSize: sectionLabelSize,
           lineHeight: sectionLabelLine,
-          fontWeight: '700',
-          color: '#1C1917',
+          fontWeight: '600',
+          color: '#57534E',
           marginBottom: Math.round((compact ? 3 : 4) * fontScale),
         }}
       >
@@ -164,8 +164,8 @@ function ArticleSummaryPoints({
               ...sansStyle,
               fontSize: sectionLabelSize,
               lineHeight: sectionLabelLine,
-              fontWeight: '700',
-              color: '#1C1917',
+              fontWeight: '600',
+              color: '#57534E',
               marginBottom: Math.round((compact ? 4 : 6) * fontScale),
             }}
           >
@@ -210,6 +210,15 @@ function ArticleSummaryPoints({
   );
 }
 
+function formatMetaLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^[A-Z]{2,4}$/.test(trimmed) || /^(us|uk|ai|eu)$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
 /**
  * Shared editorial card body used across active, next-peek, and previous-pull cards
  * so transitions never shift typography or metadata placement.
@@ -238,20 +247,44 @@ function EditorialCardContent({
   const sansStyle = Fonts?.sans
     ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
     : {};
-  const cardTags = getArticleTags(article);
+  const visibleTags = getArticleTags(article).filter(
+    (tag) => !tag.includes('-') && !tag.includes('_')
+  );
   const shortDate = formatEditionDate(article.date, 'short');
   const sourceLabel = getSourceLabel(article);
-  const metaLine = [shortDate, sourceLabel]
-    .filter(Boolean)
-    .map((part) => String(part).toUpperCase())
-    .join(' · ');
-  const kickerFontSize = scaleFont(11, fontScale);
+  const trailingMeta = [shortDate, sourceLabel].filter(Boolean).join(' · ');
+  const kickerFontSize = scaleFont(12.5, fontScale);
   const summaryNode = (
     <ArticleSummaryPoints
       article={article}
       fontScale={fontScale}
       compact={compact}
     />
+  );
+
+  const whyItMattersPill = (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#0F766E',
+        paddingHorizontal: 16,
+        paddingVertical: 9,
+        borderRadius: 999,
+      }}
+    >
+      <Text
+        style={{
+          ...sansStyle,
+          fontSize: scaleFont(13.5, fontScale),
+          fontWeight: '600',
+          color: '#FFFFFF',
+        }}
+      >
+        Why it matters ↻
+      </Text>
+    </View>
   );
 
   return (
@@ -262,7 +295,7 @@ function EditorialCardContent({
       }}
     >
       <View>
-        {/* Editorial Uppercase Topic Metadata Line */}
+        {/* Single Sentence-Case Metadata Line Above Headline */}
         {activeTopic ? (
           <View
             style={{
@@ -278,14 +311,14 @@ function EditorialCardContent({
                 ...sansStyle,
                 flexShrink: 1,
                 fontSize: kickerFontSize,
-                fontWeight: '600',
-                letterSpacing: 0.85,
-                color: '#78716C',
+                fontWeight: '500',
+                color: '#57534E',
               }}
               numberOfLines={1}
             >
-              {activeTopic.toUpperCase()}
+              {formatMetaLabel(activeTopic)}
               {activePositionLabel ? ` · ${activePositionLabel}` : ''}
+              {trailingMeta ? ` · ${trailingMeta}` : ''}
             </Text>
             {onClearTopic ? (
               <Pressable
@@ -314,7 +347,7 @@ function EditorialCardContent({
               </Pressable>
             ) : null}
           </View>
-        ) : cardTags.length > 0 ? (
+        ) : visibleTags.length > 0 || trailingMeta ? (
           <View
             style={{
               flexDirection: 'row',
@@ -323,18 +356,17 @@ function EditorialCardContent({
               marginBottom: Math.round((compact ? 5 : 7) * fontScale),
             }}
           >
-            {cardTags.map((tag, tagIdx) => {
+            {visibleTags.map((tag, tagIdx) => {
               const label = (
                 <Text
                   style={{
                     ...sansStyle,
                     fontSize: kickerFontSize,
-                    fontWeight: '600',
-                    letterSpacing: 0.85,
-                    color: '#78716C',
+                    fontWeight: '500',
+                    color: '#57534E',
                   }}
                 >
-                  {tag.toUpperCase()}
+                  {formatMetaLabel(tag)}
                 </Text>
               );
               return (
@@ -347,8 +379,8 @@ function EditorialCardContent({
                       style={{
                         ...sansStyle,
                         fontSize: kickerFontSize,
-                        fontWeight: '600',
-                        color: '#A8A29E',
+                        fontWeight: '500',
+                        color: '#57534E',
                         marginHorizontal: 5,
                       }}
                     >
@@ -377,6 +409,18 @@ function EditorialCardContent({
                 </View>
               );
             })}
+            {trailingMeta ? (
+              <Text
+                style={{
+                  ...sansStyle,
+                  fontSize: kickerFontSize,
+                  fontWeight: '500',
+                  color: '#57534E',
+                }}
+              >
+                {visibleTags.length > 0 ? ` · ${trailingMeta}` : trailingMeta}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -387,30 +431,11 @@ function EditorialCardContent({
             ...getNewsFontStyle('700'),
             fontSize: scaleFont(compact ? 19.5 : 21, fontScale),
             lineHeight: scaleFont(compact ? 25 : 27, fontScale),
+            marginBottom: Math.round((compact ? 11 : 15) * fontScale),
           }}
         >
           {article.ai_headline}
         </Text>
-
-        {/* Date · Source underneath headline with clean vertical space */}
-        {metaLine ? (
-          <Text
-            style={{
-              ...sansStyle,
-              fontSize: kickerFontSize,
-              fontWeight: '500',
-              letterSpacing: 0.6,
-              color: '#A8A29E',
-              marginTop: Math.round((compact ? 5 : 7) * fontScale),
-              marginBottom: Math.round((compact ? 11 : 16) * fontScale),
-            }}
-            numberOfLines={1}
-          >
-            {metaLine}
-          </Text>
-        ) : (
-          <View style={{ height: Math.round((compact ? 10 : 14) * fontScale) }} />
-        )}
 
         {/* Two-part scannable summary */}
         {wrapSummary ? wrapSummary(summaryNode) : summaryNode}
@@ -419,7 +444,7 @@ function EditorialCardContent({
       {/* Bottom card utility: Why it matters */}
       <View
         style={{
-          marginTop: Math.round((compact ? 10 : 14) * fontScale),
+          marginTop: Math.round((compact ? 12 : 16) * fontScale),
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'flex-start',
@@ -433,35 +458,17 @@ function EditorialCardContent({
             }}
             accessibilityLabel="Flip card to see why it matters"
             hitSlop={8}
-            className="active:opacity-60"
+            className="active:opacity-75"
             style={{
               ...(Platform.OS === 'web'
                 ? ({ cursor: 'pointer' } as Record<string, unknown>)
                 : {}),
             }}
           >
-            <Text
-              style={{
-                ...sansStyle,
-                fontSize: scaleFont(12.5, fontScale),
-                fontWeight: '500',
-                color: '#78716C',
-              }}
-            >
-              Why it matters ↻
-            </Text>
+            {whyItMattersPill}
           </Pressable>
         ) : (
-          <Text
-            style={{
-              ...sansStyle,
-              fontSize: scaleFont(12.5, fontScale),
-              fontWeight: '500',
-              color: '#78716C',
-            }}
-          >
-            Why it matters ↻
-          </Text>
+          whyItMattersPill
         )}
       </View>
     </View>
@@ -503,8 +510,8 @@ function EditionCoverContent({
   const { storyCount, readMinutes, editedAgoText } = editionMeta;
   const estimateLine = `${storyCount} ${storyCount === 1 ? 'story' : 'stories'} today. About ${readMinutes} ${readMinutes === 1 ? 'minute' : 'minutes'}.`;
   const editorCredit = editedAgoText
-    ? `Today's News Edited by Tushar Roy, ${editedAgoText}`
-    : "Today's News Edited by Tushar Roy";
+    ? `Edited by Tushar Roy, ${editedAgoText}`
+    : 'Edited by Tushar Roy';
 
   const swipeCueContent = (
     <View
@@ -563,18 +570,17 @@ function EditionCoverContent({
     >
       <CoverPatternArt />
 
-      {/* High-contrast Readable Date + Greeting + Time Estimate */}
+      {/* Readable Date + Greeting + Unified Summary */}
       <View style={{ alignItems: 'center', width: '100%', maxWidth: 320 }}>
         {fullDate ? (
           <Text
             style={{
               ...sansStyle,
-              fontSize: scaleFont(14, fontScale),
-              fontWeight: '600',
-              letterSpacing: 0.1,
-              color: '#292524',
+              fontSize: scaleFont(13, fontScale),
+              fontWeight: '400',
+              color: '#57534E',
               textAlign: 'center',
-              marginBottom: Math.round(12 * fontScale),
+              marginBottom: Math.round(10 * fontScale),
             }}
           >
             {fullDate}
@@ -585,9 +591,9 @@ function EditionCoverContent({
           className="text-ink text-center tracking-[-0.45px]"
           style={{
             ...getNewsFontStyle('700'),
-            fontSize: scaleFont(25.5, fontScale),
-            lineHeight: scaleFont(31, fontScale),
-            marginBottom: Math.round(10 * fontScale),
+            fontSize: scaleFont(26, fontScale),
+            lineHeight: scaleFont(32, fontScale),
+            marginBottom: Math.round(12 * fontScale),
           }}
         >
           Welcome curious reader!
@@ -598,10 +604,10 @@ function EditionCoverContent({
             <Text
               className="text-center"
               style={{
-                ...getNewsFontStyle('500'),
+                ...getNewsFontStyle('400'),
                 fontSize: scaleFont(15.5, fontScale),
-                lineHeight: scaleFont(22, fontScale),
-                color: '#57534E',
+                lineHeight: scaleFont(23, fontScale),
+                color: '#44403C',
               }}
             >
               {estimateLine}
@@ -609,11 +615,11 @@ function EditionCoverContent({
             <Text
               className="text-center"
               style={{
-                ...getNewsFontStyle('600'),
+                ...getNewsFontStyle('400'),
                 fontSize: scaleFont(15.5, fontScale),
-                lineHeight: scaleFont(22, fontScale),
+                lineHeight: scaleFont(23, fontScale),
                 color: '#0F766E',
-                marginTop: Math.round(4 * fontScale),
+                marginTop: Math.round(3 * fontScale),
               }}
             >
               No doomscrolling.
@@ -623,9 +629,9 @@ function EditionCoverContent({
           <Text
             className="text-center"
             style={{
-              ...getNewsFontStyle('500'),
+              ...getNewsFontStyle('400'),
               fontSize: scaleFont(15.5, fontScale),
-              lineHeight: scaleFont(22, fontScale),
+              lineHeight: scaleFont(23, fontScale),
               color: '#0F766E',
             }}
           >
@@ -663,8 +669,8 @@ function EditionCoverContent({
         <Text
           style={{
             ...sansStyle,
-            fontSize: scaleFont(11.5, fontScale),
-            color: '#78716C',
+            fontSize: scaleFont(12, fontScale),
+            color: '#57534E',
             textAlign: 'center',
           }}
         >
@@ -2118,10 +2124,10 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
                               unknown
                             >)
                           : {}),
-                        fontSize: scaleFont(12, fontScale),
+                        fontSize: scaleFont(12.5, fontScale),
                         fontWeight: '600',
-                        letterSpacing: 0.5,
-                        color: '#78716C',
+                        letterSpacing: 0.3,
+                        color: '#57534E',
                       }}
                       numberOfLines={1}
                     >
@@ -2135,7 +2141,7 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
                       ...getNewsFontStyle('600'),
                       fontSize: scaleFont(16.5, fontScale),
                       lineHeight: scaleFont(22, fontScale),
-                      color: '#57534E',
+                      color: '#1C1917',
                       marginBottom: Math.round(14 * fontScale),
                     }}
                     numberOfLines={2}
@@ -2182,7 +2188,7 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
                           : {}),
                         fontSize: scaleFont(12.5, fontScale),
                         fontWeight: '500',
-                        color: '#78716C',
+                        color: '#57534E',
                       }}
                     >
                       ↻ Story
@@ -2204,7 +2210,7 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
                         borderRadius: 999,
                         backgroundColor: '#F0FDFA',
                         borderWidth: 1,
-                        borderColor: 'rgba(13, 148, 136, 0.28)',
+                        borderColor: 'rgba(15, 118, 110, 0.28)',
                         ...(Platform.OS === 'web'
                           ? ({ cursor: 'pointer' } as Record<string, unknown>)
                           : {}),
@@ -2295,8 +2301,11 @@ const ArticleDeckCard = memo(function ArticleDeckCard({
               ) : (
                 <>
                   <Text
-                    className="font-medium text-stone-500 mb-2.5"
-                    style={{ fontSize: scaleFont(13, fontScale) }}
+                    className="font-medium mb-2.5"
+                    style={{
+                      fontSize: scaleFont(13, fontScale),
+                      color: '#57534E',
+                    }}
                   >
                     Was it helpful?
                   </Text>

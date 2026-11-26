@@ -7,10 +7,8 @@ const WORK_SANS_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap';
 const IBM_PLEX_MONO_STYLESHEET =
   'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap';
-const INTER_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
-const PLUS_JAKARTA_SANS_STYLESHEET =
-  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
+const BRICOLAGE_STYLESHEET =
+  'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&display=swap';
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -32,8 +30,7 @@ export default function Root({ children }: PropsWithChildren) {
         <link id="newsreader-font" rel="stylesheet" href={NEWSREADER_STYLESHEET} />
         <link id="work-sans-font" rel="stylesheet" href={WORK_SANS_STYLESHEET} />
         <link id="ibm-plex-mono-font" rel="stylesheet" href={IBM_PLEX_MONO_STYLESHEET} />
-        <link id="inter-font" rel="stylesheet" href={INTER_STYLESHEET} />
-        <link id="plus-jakarta-sans-font" rel="stylesheet" href={PLUS_JAKARTA_SANS_STYLESHEET} />
+        <link id="bricolage-grotesque-font" rel="stylesheet" href={BRICOLAGE_STYLESHEET} />
         <ScrollViewStyleReset />
         <style>{`html, body { background-color: #141821; }`}</style>
       </head>

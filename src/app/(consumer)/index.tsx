@@ -45,8 +45,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 type ViewMode = 'today' | 'older';
+
+const SANS_MEDIUM =
+  Platform.OS === 'web'
+    ? "'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+    : 'BricolageGrotesque_500Medium';
+const SANS_SEMIBOLD =
+  Platform.OS === 'web'
+    ? "'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+    : 'BricolageGrotesque_600SemiBold';
+const SANS_BOLD =
+  Platform.OS === 'web'
+    ? "'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+    : 'BricolageGrotesque_700Bold';
 
 const FTUE_STORAGE_KEY = 'snappylit_ftue_seen';
 let hasSeenFtueInSession = false;
@@ -656,30 +670,76 @@ export default function ConsumerHomeScreen() {
           <View
             style={{
               minHeight: 36,
-              justifyContent: 'center',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
             }}
           >
-            <Text
+            <Image
+              source={require('@/assets/images/clempo-logo.png')}
+              contentFit="contain"
               style={{
-                fontSize: 22,
-                fontWeight: '700',
-                color: '#fefaef',
-                letterSpacing: -0.45,
-                ...(Fonts?.sans
-                  ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
-                  : {}),
+                width: 26,
+                height: 26,
+                borderRadius: 6,
               }}
-              numberOfLines={1}
+            />
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                gap: 6,
+              }}
             >
-              Clempo
-            </Text>
+              <Text
+                style={{
+                  fontSize: 22,
+                  fontWeight: '700',
+                  color: '#fefaef',
+                  letterSpacing: -0.45,
+                  fontFamily: SANS_BOLD,
+                }}
+                numberOfLines={1}
+              >
+                Clempo
+              </Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text
+                  style={{
+                    color: '#2DD4BF',
+                    fontSize: 18,
+                    fontWeight: '500',
+                    letterSpacing: -0.1,
+                    fontFamily: SANS_MEDIUM,
+                  }}
+                  numberOfLines={1}
+                >
+                  News
+                </Text>
+                <Svg
+                  width={44}
+                  height={6}
+                  viewBox="0 0 44 6"
+                  style={{ marginTop: -2 }}
+                >
+                  <Path
+                    d="M 1.5 4.4 Q 15 1.1, 27 3.0 T 42.5 2.0"
+                    stroke="#2DD4BF"
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </Svg>
+              </View>
+            </View>
           </View>
           <Text
             style={{
               marginTop: 4,
-              fontSize: 12,
-              fontWeight: '500',
-              color: 'rgba(250, 249, 246, 0.56)',
+              fontSize: 11,
+              fontWeight: '400',
+              fontFamily: SANS_MEDIUM,
+              color: 'rgba(250, 249, 246, 0.52)',
             }}
             numberOfLines={1}
           >
@@ -748,13 +808,12 @@ export default function ConsumerHomeScreen() {
                 style={{
                   fontSize: 16,
                   fontWeight: selectedTopic === null ? '700' : '500',
+                  fontFamily:
+                    selectedTopic === null ? SANS_BOLD : SANS_MEDIUM,
                   color:
                     selectedTopic === null
                       ? '#FFFFFF'
-                      : 'rgba(250, 249, 246, 0.78)',
-                  ...(Fonts?.sans
-                    ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
-                    : {}),
+                      : 'rgba(250, 249, 246, 0.85)',
                 }}
               >
                 All Topics
@@ -797,13 +856,14 @@ export default function ConsumerHomeScreen() {
                       fontSize: 16,
                       fontWeight:
                         selectedTopic === SAVED_TOPIC_KEY ? '700' : '500',
+                      fontFamily:
+                        selectedTopic === SAVED_TOPIC_KEY
+                          ? SANS_BOLD
+                          : SANS_MEDIUM,
                       color:
                         selectedTopic === SAVED_TOPIC_KEY
                           ? '#FFFFFF'
-                          : 'rgba(250, 249, 246, 0.78)',
-                      ...(Fonts?.sans
-                        ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
-                        : {}),
+                          : 'rgba(250, 249, 246, 0.85)',
                     }}
                   >
                     Saved for later
@@ -819,8 +879,9 @@ export default function ConsumerHomeScreen() {
                 >
                   <Text
                     style={{
-                      fontSize: 11.5,
+                      fontSize: 12,
                       fontWeight: '700',
+                      fontFamily: SANS_BOLD,
                       color: '#2DD4BF',
                     }}
                   >
@@ -876,13 +937,11 @@ export default function ConsumerHomeScreen() {
                       style={{
                         fontSize: 16,
                         fontWeight: isSelected ? '700' : '500',
+                        fontFamily: isSelected ? SANS_BOLD : SANS_MEDIUM,
                         color: isSelected
                           ? '#FFFFFF'
-                          : 'rgba(250, 249, 246, 0.78)',
+                          : 'rgba(250, 249, 246, 0.85)',
                         flexShrink: 1,
-                        ...(Fonts?.sans
-                          ? ({ fontFamily: Fonts.sans } as Record<string, unknown>)
-                          : {}),
                       }}
                       numberOfLines={1}
                     >
@@ -921,16 +980,16 @@ export default function ConsumerHomeScreen() {
               <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255, 255, 255, 0.08)' }}>
                 <Text
                   style={{
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: '600',
-                    letterSpacing: 0.9,
-                    textTransform: 'uppercase',
-                    color: 'rgba(250, 249, 246, 0.45)',
+                    fontFamily: SANS_SEMIBOLD,
+                    letterSpacing: 0.7,
+                    color: 'rgba(250, 249, 246, 0.65)',
                     paddingHorizontal: 14,
                     marginBottom: 6,
                   }}
                 >
-                  Tuned Tags
+                  Tuned tags
                 </Text>
                 {tunedSecondaryTags.map((tag) => {
                   const isSelected = selectedTopic === tag;
@@ -965,9 +1024,10 @@ export default function ConsumerHomeScreen() {
                           style={{
                             fontSize: 14.5,
                             fontWeight: isSelected ? '700' : '500',
+                            fontFamily: isSelected ? SANS_BOLD : SANS_MEDIUM,
                             color: isSelected
                               ? '#FFFFFF'
-                              : 'rgba(250, 249, 246, 0.72)',
+                              : 'rgba(250, 249, 246, 0.8)',
                             flexShrink: 1,
                           }}
                           numberOfLines={1}
@@ -1010,14 +1070,26 @@ export default function ConsumerHomeScreen() {
           }}
         />
 
-        {/* Bottom Area: Font Size Control + Image Toggle + Support */}
+        {/* Bottom Area: Settings Group (Font Size Control + Image Toggle + Support) */}
         <View
           style={{
-            paddingTop: 22,
+            paddingTop: 18,
             paddingHorizontal: 30,
-            gap: 20,
+            gap: 18,
           }}
         >
+          <Text
+            style={{
+              fontSize: 11.5,
+              fontWeight: '600',
+              fontFamily: SANS_SEMIBOLD,
+              letterSpacing: 0.7,
+              color: 'rgba(250, 249, 246, 0.56)',
+              marginBottom: -6,
+            }}
+          >
+            Settings
+          </Text>
           {/* Font Size Slider / Stepper */}
           <View style={{ gap: 10 }}>
             <View
@@ -1031,16 +1103,18 @@ export default function ConsumerHomeScreen() {
                 style={{
                   fontSize: 14.5,
                   fontWeight: '500',
-                  color: 'rgba(250, 249, 246, 0.85)',
+                  fontFamily: SANS_MEDIUM,
+                  color: 'rgba(250, 249, 246, 0.88)',
                 }}
               >
                 Text size
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: '600',
-                  color: 'rgba(250, 249, 246, 0.52)',
+                  fontFamily: SANS_SEMIBOLD,
+                  color: 'rgba(250, 249, 246, 0.7)',
                 }}
               >
                 {FONT_SCALE_STEPS.find((s) => Math.abs(s.scale - fontScale) < 0.03)
@@ -1073,7 +1147,8 @@ export default function ConsumerHomeScreen() {
                   style={{
                     fontSize: 12.5,
                     fontWeight: '700',
-                    color: 'rgba(250, 249, 246, 0.78)',
+                    fontFamily: SANS_BOLD,
+                    color: 'rgba(250, 249, 246, 0.85)',
                   }}
                 >
                   A-
@@ -1151,6 +1226,7 @@ export default function ConsumerHomeScreen() {
                   style={{
                     fontSize: 16,
                     fontWeight: '700',
+                    fontFamily: SANS_BOLD,
                     color: 'rgba(250, 249, 246, 0.92)',
                   }}
                 >
@@ -1175,7 +1251,8 @@ export default function ConsumerHomeScreen() {
               style={{
                 fontSize: 14.5,
                 fontWeight: '500',
-                color: 'rgba(250, 249, 246, 0.85)',
+                fontFamily: SANS_MEDIUM,
+                color: 'rgba(250, 249, 246, 0.88)',
               }}
             >
               Show images
@@ -1216,7 +1293,9 @@ export default function ConsumerHomeScreen() {
               style={{
                 fontSize: 14.5,
                 fontWeight: '500',
-                color: 'rgba(250, 249, 246, 0.85)',
+                fontFamily: SANS_MEDIUM,
+                color: 'rgba(250, 249, 246, 0.88)',
+                textDecorationLine: 'underline',
               }}
             >
               Support
