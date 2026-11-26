@@ -14,7 +14,9 @@ import { getApiBaseUrl } from '@/config/appConfig';
 import type {
   ActivePolicyDoc,
   AgentInstructionsSnapshot,
+  Article,
   ArticleFlag,
+  ArticleRevision,
   FlagAutonomyConfig,
   JudgeClaim,
   JudgeScores,
@@ -252,10 +254,53 @@ export async function regenerateDraftRequest(params: {
 
 export async function acceptRegeneratedDraft(
   articleId: string,
-  result: RegenerateResponse
+  result: RegenerateResponse,
+  previousArticle?: Article
 ): Promise<void> {
   const now = new Date().toISOString();
   const ref = doc(db, 'articles', articleId);
+  const newRevisions: ArticleRevision[] = [];
+
+  if (
+    previousArticle &&
+    (!previousArticle.revisions || previousArticle.revisions.length === 0)
+  ) {
+    newRevisions.push({
+      at: previousArticle.edited_at || previousArticle.date || now,
+      kind: 'initial',
+      headline: previousArticle.ai_headline,
+      summary: previousArticle.ai_summary,
+      original_url: previousArticle.original_url,
+      source_name: previousArticle.source_names?.[0],
+      used_fallback_snippet: Boolean(previousArticle.used_fallback_snippet),
+      confidence_score: previousArticle.confidence_score,
+      note: previousArticle.used_fallback_snippet
+        ? 'Started from short RSS snippet'
+        : 'Initial collected draft',
+    });
+  }
+
+  const sourceChanged =
+    Boolean(result.after.original_url) &&
+    result.after.original_url !== previousArticle?.original_url;
+
+  newRevisions.push({
+    at: now,
+    kind: sourceChanged ? 'source_change' : 'ai_rewrite',
+    headline: result.after.ai_headline,
+    summary: result.after.ai_summary,
+    original_url:
+      result.after.original_url || previousArticle?.original_url || '',
+    source_name:
+      result.after.source_names?.[0] || previousArticle?.source_names?.[0],
+    used_fallback_snippet:
+      typeof result.after.used_fallback_snippet === 'boolean'
+        ? result.after.used_fallback_snippet
+        : previousArticle?.used_fallback_snippet,
+    confidence_score: result.after.confidence_score,
+    note: result.traceStep.summary,
+  });
+
   await updateDoc(ref, {
     ai_headline: result.after.ai_headline,
     ai_summary: result.after.ai_summary,
@@ -286,6 +331,7 @@ export async function acceptRegeneratedDraft(
     edited_at: now,
     pipeline_trace: arrayUnion(result.traceStep),
     decision_history: arrayUnion({ action: 'regenerated', at: now }),
+    revisions: arrayUnion(...newRevisions),
   });
 }
 

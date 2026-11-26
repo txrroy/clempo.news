@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking,
@@ -15,13 +16,23 @@ import {
   type RegenerateResponse,
 } from '@/hooks/useGovernance';
 import {
+  formatEditionDate,
+  getSourceLabel,
+  splitSummaryIntoPoints,
+} from '@/lib/consumerUtils';
+import {
   getEditorialState,
   getFlagPlainReason,
   getFlagShortLabel,
   getWhyThisNeedsYouMessage,
   isSnippetOnlyUnverified,
 } from '@/lib/editorialLabels';
-import type { Article, ArticleFlag, ReadingLevel } from '@/types/article';
+import type {
+  Article,
+  ArticleFlag,
+  ArticleRevision,
+  ReadingLevel,
+} from '@/types/article';
 import {
   V3Badge,
   V3Button,
@@ -333,6 +344,8 @@ function StoryDetailContent({
     Boolean(article.source_checked)
   );
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showReaderPreview, setShowReaderPreview] = useState(false);
+  const [showRevisions, setShowRevisions] = useState(false);
 
   const unsupportedClaims = useMemo(
     () =>
@@ -631,7 +644,7 @@ function StoryDetailContent({
     setBusyAction('accept-regen');
     setFeedback(null);
     try {
-      await acceptRegeneratedDraft(article.id, regenPreview);
+      await acceptRegeneratedDraft(article.id, regenPreview, article);
       setHeadline(regenPreview.after.ai_headline);
       setSummary(regenPreview.after.ai_summary);
       setRegenPreview(null);
@@ -705,6 +718,12 @@ function StoryDetailContent({
               variant="outline"
               size="sm"
               onPress={() => Linking.openURL(article.original_url)}
+            />
+            <V3Button
+              label={showReaderPreview ? 'Back to Editor' : 'Preview as Reader'}
+              variant={showReaderPreview ? 'dark' : 'outline'}
+              size="sm"
+              onPress={() => setShowReaderPreview((v) => !v)}
             />
             <V3Badge label={statusBadge.label} tone={statusBadge.tone} />
             {article.sensitive ? (
@@ -826,6 +845,112 @@ function StoryDetailContent({
           gap: V3_SPACE.xl,
         }}
       >
+        {showReaderPreview ? (
+          <V3Card
+            variant="outlined"
+            padding="lg"
+            style={{
+              maxWidth: 680,
+              width: '100%',
+              alignSelf: 'center',
+              gap: V3_SPACE.md,
+              backgroundColor: V3_COLORS.surface,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: V3_SPACE.sm,
+              }}
+            >
+              <V3Badge label="READER PREVIEW · LIVE DRAFT" tone="approved" />
+              <V3Text role="mono" tone="muted">
+                {formatEditionDate(article.date, 'short')}
+                {article.topic ? ` · ${article.topic.toUpperCase()}` : ''}
+              </V3Text>
+            </View>
+
+            {article.image_url ? (
+              <Image
+                source={{ uri: article.image_url }}
+                style={{
+                  width: '100%',
+                  height: 240,
+                  borderRadius: V3_RADII.control,
+                  backgroundColor: V3_COLORS.surfaceWell,
+                }}
+                contentFit="cover"
+              />
+            ) : null}
+
+            <V3Text role="title">{headline}</V3Text>
+
+            <View style={{ gap: V3_SPACE.sm }}>
+              {splitSummaryIntoPoints(summary).map((point, idx) => (
+                <View
+                  key={idx}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: V3_SPACE.sm,
+                  }}
+                >
+                  <V3Text role="body" tone="accent" weight="700">
+                    •
+                  </V3Text>
+                  <V3Text role="body" style={{ flex: 1 }}>
+                    {point}
+                  </V3Text>
+                </View>
+              ))}
+            </View>
+
+            {article.ai_explanation ? (
+              <View
+                style={{
+                  backgroundColor: V3_COLORS.surfaceWell,
+                  borderLeftWidth: 3,
+                  borderLeftColor: V3_COLORS.accent,
+                  paddingHorizontal: V3_SPACE.md,
+                  paddingVertical: V3_SPACE.sm,
+                  gap: 4,
+                }}
+              >
+                <V3Text role="kicker" tone="muted">
+                  BACKGROUND CONTEXT
+                </V3Text>
+                <V3Text role="body" tone="muted">
+                  {article.ai_explanation}
+                </V3Text>
+              </View>
+            ) : null}
+
+            <V3Rule />
+
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: V3_SPACE.sm,
+              }}
+            >
+              <V3Text role="mono" tone="muted">
+                SOURCE: {getSourceLabel(article) || 'Original source'}
+              </V3Text>
+              <V3Button
+                label="Open source link ↗"
+                variant="outline"
+                size="sm"
+                onPress={() => Linking.openURL(article.original_url)}
+              />
+            </View>
+          </V3Card>
+        ) : null}
+
         {/* 1. Headline First */}
         <View style={{ gap: V3_SPACE.xs }}>
           <V3Text role="mono" tone="muted">
@@ -1636,6 +1761,129 @@ function StoryDetailContent({
                   </V3Text>
                 ))}
               </View>
+            </View>
+          ) : null}
+        </V3Card>
+
+        {/* 5. Revision History */}
+        <V3Card variant="outlined" padding="lg" style={{ gap: V3_SPACE.md }}>
+          <Pressable
+            onPress={() => setShowRevisions((v) => !v)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: V3_SPACE.md,
+              ...(Platform.OS === 'web'
+                ? ({ cursor: 'pointer' } as Record<string, unknown>)
+                : {}),
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: V3_SPACE.md,
+              }}
+            >
+              <V3Text role="kicker">
+                REVISION HISTORY ({article.revisions?.length ?? 1})
+              </V3Text>
+              <V3Text role="mono" tone="muted">
+                {article.used_fallback_snippet
+                  ? 'STARTED FROM RSS SNIPPET'
+                  : 'FULL SOURCE'}
+              </V3Text>
+            </View>
+            <V3Text role="kicker" tone="subtle">
+              {showRevisions ? 'HIDE REVISIONS ▲' : 'SHOW REVISIONS ▼'}
+            </V3Text>
+          </Pressable>
+
+          {showRevisions ? (
+            <View style={{ gap: V3_SPACE.md }}>
+              <V3Rule />
+              {(article.revisions && article.revisions.length > 0
+                ? article.revisions
+                : ([
+                    {
+                      at: article.edited_at || article.date,
+                      kind: 'initial',
+                      headline: article.ai_headline,
+                      summary: article.ai_summary,
+                      original_url: article.original_url,
+                      source_name: article.source_names?.[0],
+                      used_fallback_snippet: Boolean(
+                        article.used_fallback_snippet
+                      ),
+                      confidence_score: article.confidence_score,
+                      note: article.used_fallback_snippet
+                        ? 'Started from short RSS snippet'
+                        : 'Initial collected draft',
+                    },
+                  ] as ArticleRevision[])
+              ).map((rev, idx) => {
+                const kindLabel =
+                  rev.kind === 'initial'
+                    ? rev.used_fallback_snippet
+                      ? 'INITIAL RSS SNIPPET'
+                      : 'INITIAL DRAFT'
+                    : rev.kind === 'source_change'
+                      ? 'NEW SOURCE'
+                      : rev.kind === 'ai_rewrite'
+                        ? 'AI REWRITE'
+                        : rev.kind === 'manual_edit'
+                          ? 'MANUAL EDIT'
+                          : 'PUBLISHED';
+                const kindTone =
+                  rev.kind === 'published' || rev.kind === 'source_change'
+                    ? 'approved'
+                    : rev.used_fallback_snippet
+                      ? 'pending'
+                      : 'neutral';
+                return (
+                  <View key={`${rev.at}-${idx}`} style={{ gap: V3_SPACE.xs }}>
+                    {idx > 0 ? <V3Rule /> : null}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: V3_SPACE.sm,
+                      }}
+                    >
+                      <V3Badge label={kindLabel} tone={kindTone} />
+                      <V3Text role="mono" tone="muted">
+                        {rev.at}
+                      </V3Text>
+                      {rev.source_name ? (
+                        <V3Text role="mono" tone="ink">
+                          {rev.source_name}
+                        </V3Text>
+                      ) : null}
+                      {typeof rev.confidence_score === 'number' ? (
+                        <V3Text role="mono" tone="muted">
+                          SCORE {rev.confidence_score}
+                        </V3Text>
+                      ) : null}
+                    </View>
+                    <V3Text role="headline">{rev.headline}</V3Text>
+                    <V3Text role="body" tone="muted">
+                      {rev.summary}
+                    </V3Text>
+                    {rev.original_url ? (
+                      <V3Text role="mono" tone="subtle">
+                        {rev.original_url}
+                      </V3Text>
+                    ) : null}
+                    {rev.note ? (
+                      <V3Text role="mono" tone="muted">
+                        {rev.note}
+                      </V3Text>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
         </V3Card>

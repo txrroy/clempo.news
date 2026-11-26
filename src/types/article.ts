@@ -185,7 +185,27 @@ export interface Article {
   auto_retried_complexity?: boolean;
   retry_history?: ArticleRetryHistoryEntry[];
   decision_history?: DecisionRecord[];
+  revisions?: ArticleRevision[];
   prompt_version?: string;
   instructions_snapshot?: AgentInstructionsSnapshot;
   pipeline_trace?: PipelineTraceStep[];
+}
+
+export type ArticleRevisionKind =
+  | 'initial'
+  | 'source_change'
+  | 'ai_rewrite'
+  | 'manual_edit'
+  | 'published';
+
+export interface ArticleRevision {
+  at: string;
+  kind: ArticleRevisionKind;
+  headline: string;
+  summary: string;
+  original_url?: string;
+  source_name?: string;
+  used_fallback_snippet?: boolean;
+  confidence_score?: number;
+  note?: string;
 }

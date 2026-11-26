@@ -265,6 +265,13 @@ export function useDraftArticles(enabled = true): UseDraftArticlesResult {
         ai_summary: summary.trim(),
         edited_at: now,
         decision_history: arrayUnion({ action: 'edited', at: now }),
+        revisions: arrayUnion({
+          at: now,
+          kind: 'manual_edit',
+          headline: headline.trim(),
+          summary: summary.trim(),
+          note: 'Manual editor update',
+        }),
       });
     },
     []
@@ -281,6 +288,13 @@ export function useDraftArticles(enabled = true): UseDraftArticlesResult {
         approved_by: adminUid,
         approved_at: now,
         decision_history: arrayUnion({ action: 'approved', at: now }),
+        revisions: arrayUnion({
+          at: now,
+          kind: 'published',
+          headline: headline.trim(),
+          summary: summary.trim(),
+          note: 'Approved & published',
+        }),
       });
     },
     []
@@ -383,6 +397,13 @@ export function useAdminArticles(enabled = true): UseAdminArticlesResult {
         ai_summary: summary.trim(),
         edited_at: now,
         decision_history: arrayUnion({ action: 'edited', at: now }),
+        revisions: arrayUnion({
+          at: now,
+          kind: 'manual_edit',
+          headline: headline.trim(),
+          summary: summary.trim(),
+          note: 'Manual editor update',
+        }),
       });
     },
     []
@@ -399,6 +420,13 @@ export function useAdminArticles(enabled = true): UseAdminArticlesResult {
         approved_by: adminUid,
         approved_at: now,
         decision_history: arrayUnion({ action: 'approved', at: now }),
+        revisions: arrayUnion({
+          at: now,
+          kind: 'published',
+          headline: headline.trim(),
+          summary: summary.trim(),
+          note: 'Approved & published',
+        }),
       });
     },
     []

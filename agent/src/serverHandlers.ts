@@ -84,6 +84,34 @@ function getGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
+function deriveSourceNameFromUrl(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    const known: Record<string, string> = {
+      'bbc.com': 'BBC',
+      'bbc.co.uk': 'BBC',
+      'reuters.com': 'Reuters',
+      'apnews.com': 'AP News',
+      'aljazeera.com': 'Al Jazeera',
+      'theguardian.com': 'The Guardian',
+      'nytimes.com': 'NYTimes',
+      'npr.org': 'NPR',
+      'cnn.com': 'CNN',
+      'france24.com': 'France 24',
+      'dw.com': 'DW',
+      'cbsnews.com': 'CBS News',
+      'abcnews.go.com': 'ABC News',
+      'nbcnews.com': 'NBC News',
+      'washingtonpost.com': 'Washington Post',
+    };
+    if (known[host]) return known[host];
+    const base = host.split('.')[0] || host;
+    return base.charAt(0).toUpperCase() + base.slice(1);
+  } catch {
+    return 'Source';
+  }
+}
+
 async function buildFetchedFromDoc(
   doc: ArticleDocument,
   tryAlternateSource = false,
@@ -101,15 +129,24 @@ async function buildFetchedFromDoc(
     : tryAlternateSource && altUrls.length > 0
       ? [...altUrls.slice(1), doc.original_url]
       : altUrls;
+  const derivedSource =
+    trimmedCustom || (tryAlternateSource && altUrls.length > 0)
+      ? deriveSourceNameFromUrl(primaryLink)
+      : doc.source_names?.[0] || 'Source';
+  const resolvedSourceNames = trimmedCustom
+    ? [derivedSource]
+    : tryAlternateSource && altUrls.length > 0
+      ? [derivedSource, ...(doc.source_names || []).filter((s) => s !== derivedSource)]
+      : doc.source_names || [];
 
   const base: FetchedArticle = {
     title: doc.ai_headline,
     link: primaryLink,
     snippet: doc.ai_summary,
-    source: doc.source_names?.[0] || 'Source',
+    source: derivedSource,
     imageUrl: doc.image_url,
-    source_count: doc.source_count || 1,
-    source_names: doc.source_names || [],
+    source_count: resolvedSourceNames.length || doc.source_count || 1,
+    source_names: resolvedSourceNames,
     alternate_urls: remainingAlts,
     topic: doc.topic || 'World',
     region: doc.region || 'Global',
@@ -432,6 +469,7 @@ export async function handleRegenerate(
           ? {
               original_url: fetched.link,
               source_text: fetched.fullText,
+              source_names: fetched.source_names,
               alternate_urls: fetched.alternate_urls,
               used_fallback_snippet: fetched.usedFallbackSnippet,
             }
